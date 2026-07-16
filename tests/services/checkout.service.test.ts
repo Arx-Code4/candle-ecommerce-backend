@@ -167,28 +167,23 @@ describe.skip('createChapaSession', () => {
   });
 });
 
-describe.skip('confirmChapaPayment', () => {
-  const pendingRow = {
-    txRef: 'tx-123',
-    userId: 'user-1',
-    cartSnapshot: [
-      {
-        variantId: 'v1',
-        quantity: 2,
-        unitPriceSnapshot: '750.00',
-        nameSnapshot: 'Vanilla Candle',
-        scentSnapshot: 'Vanilla',
-        sizeSnapshot: 'M',
-      },
-    ],
-    expectedAmount: '1500.00',
-  };
+const pendingRow = {
+  txRef: 'tx-123',
+  userId: 'user-1',
+  cartSnapshot: [
+    {
+      productVariantId: 'v1',
+      quantity: 2,
+      unitPriceSnapshot: '750.00',
+      productNameSnapshot: 'Vanilla Candle',
+      scentSnapshot: 'Vanilla',
+      sizeSnapshot: 'M',
+    },
+  ],
+  expectedAmount: '1500.00',
+};
 
-  // Shared fake `tx` object used by tests that need to inspect what the real
-  // implementation passes into prisma.$transaction(async (tx) => {...}).
-  // FLAG: method names (tx.order.create, tx.orderItem.create, etc.) are a
-  // best guess from eco-4's schema — adjust to match the real implementation's
-  // actual Prisma calls once confirmChapaPayment is written.
+describe.skip('confirmChapaPayment', () => {
   function makeMockTx() {
     return {
       order: { create: vi.fn().mockResolvedValue({ id: 'order-1' }) },
@@ -203,6 +198,7 @@ describe.skip('confirmChapaPayment', () => {
   }
 
   it('creates an Order on successful confirmation', async () => {
+    (prisma.order.findUnique as any).mockResolvedValue(null); // no prior confirmed order
     (prisma.pendingCheckout.findUnique as any).mockResolvedValue(pendingRow);
     const mockTx = makeMockTx();
     (prisma.$transaction as any).mockImplementation(async (fn: any) => fn(mockTx));
@@ -211,25 +207,29 @@ describe.skip('confirmChapaPayment', () => {
     const result = await confirmChapaPayment('tx-123', 'success');
 
     expect(result).toEqual({ orderId: 'order-1', created: true });
-    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(mockTx.order.create).toHaveBeenCalledTimes(1);
+    // Confirmed by eco-8.1.4: PendingCheckout row is deleted inside the same transaction
+    expect(mockTx.pendingCheckout.delete).toHaveBeenCalledTimes(1);
   });
 
   it('uses cartSnapshot data for OrderItems, not live product data', async () => {
+    (prisma.order.findUnique as any).mockResolvedValue(null);
     (prisma.pendingCheckout.findUnique as any).mockResolvedValue(pendingRow);
     const mockTx = makeMockTx();
-    // live product price (999.00) deliberately differs from the snapshot (750.00)
     (prisma.$transaction as any).mockImplementation(async (fn: any) => fn(mockTx));
 
     await confirmChapaPayment('tx-123', 'success');
 
     const orderItemArgs = mockTx.orderItem.create.mock.calls[0][0];
     expect(orderItemArgs.data.unitPriceSnapshot).toBe(pendingRow.cartSnapshot[0].unitPriceSnapshot);
-    expect(orderItemArgs.data.nameSnapshot).toBe(pendingRow.cartSnapshot[0].nameSnapshot);
+    expect(orderItemArgs.data.productNameSnapshot).toBe(
+      pendingRow.cartSnapshot[0].productNameSnapshot,
+    );
     expect(orderItemArgs.data.unitPriceSnapshot).not.toBe('999.00');
   });
 
   it('sends the confirmation email only after the transaction resolves', async () => {
+    (prisma.order.findUnique as any).mockResolvedValue(null);
     (prisma.pendingCheckout.findUnique as any).mockResolvedValue(pendingRow);
     const mockTx = makeMockTx();
     let transactionResolved = false;
@@ -248,6 +248,9 @@ describe.skip('confirmChapaPayment', () => {
   });
 
   it('throws ApiError(404) for an unknown txRef', async () => {
+    // Order pre-check must run FIRST per the confirmed flow — mock it explicitly
+    // to null so this test isn't accidentally passing due to an unmocked call.
+    (prisma.order.findUnique as any).mockResolvedValue(null);
     (prisma.pendingCheckout.findUnique as any).mockResolvedValue(null);
 
     await expect(confirmChapaPayment('bad-tx', 'success')).rejects.toMatchObject({
@@ -256,41 +259,27 @@ describe.skip('confirmChapaPayment', () => {
     });
   });
 
-  // --- Idempotency: TWO alternative tests below, covering the two mechanisms
-  // the real implementation might use. Delete whichever doesn't match once
-  // checkout.service.ts is actually written — keep only the one that applies.
-
-  it('[VARIANT A — pre-check] is idempotent when a prior Order already exists for this txRef', async () => {
-    // Assumes the service checks prisma.order.findUnique({ where: { chapaTxRef } })
-    // BEFORE opening a transaction, short-circuiting on a match.
-    (prisma.pendingCheckout.findUnique as any).mockResolvedValue(pendingRow);
-    (prisma.order.findUnique as any).mockResolvedValue({ id: 'order-1', chapaTxRef: 'tx-123' });
+  it('is idempotent — a duplicate webhook for an already-confirmed txRef returns created:false without touching the transaction', async () => {
+    // Per eco-8.1.4: checked via the unique constraint on Order.chapaTxRef.
+    // Critically, this check must run BEFORE the PendingCheckout lookup,
+    // since PendingCheckout is deleted on first confirmation — if the
+    // PendingCheckout check ran first here, a duplicate delivery would
+    // incorrectly 404 instead of returning created:false.
+    (prisma.order.findUnique as any).mockResolvedValue({
+      id: 'order-1',
+      chapaTxRef: 'tx-123',
+    });
 
     const result = await confirmChapaPayment('tx-123', 'success');
 
     expect(result).toEqual({ orderId: 'order-1', created: false });
+    expect(prisma.pendingCheckout.findUnique).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(notificationService.sendOrderConfirmationEmail).not.toHaveBeenCalled();
   });
 
-  it('[VARIANT B — catch P2002] is idempotent when the transaction itself hits a unique-constraint violation on chapaTxRef', async () => {
-    // Assumes the service attempts the write inside $transaction and catches
-    // a Prisma P2002 error on Order.chapaTxRef, rather than pre-checking.
-    (prisma.pendingCheckout.findUnique as any).mockResolvedValue(pendingRow);
-    (prisma.order.findUnique as any).mockResolvedValue(null); // no pre-check match
-    const p2002: any = new Error('Unique constraint failed on the fields: (`chapaTxRef`)');
-    p2002.code = 'P2002';
-    (prisma.$transaction as any).mockRejectedValueOnce(p2002);
-    // Second lookup after catching P2002, to resolve the existing order id for the response
-    (prisma.order.findUnique as any).mockResolvedValueOnce({ id: 'order-1', chapaTxRef: 'tx-123' });
-
-    const result = await confirmChapaPayment('tx-123', 'success');
-
-    expect(result).toEqual({ orderId: 'order-1', created: false });
-    expect(notificationService.sendOrderConfirmationEmail).not.toHaveBeenCalled();
-  });
-
   it('creates nothing for a failed status', async () => {
+    (prisma.order.findUnique as any).mockResolvedValue(null);
     (prisma.pendingCheckout.findUnique as any).mockResolvedValue(pendingRow);
 
     const result = await confirmChapaPayment('tx-123', 'failed');
@@ -300,6 +289,7 @@ describe.skip('confirmChapaPayment', () => {
   });
 
   it('creates nothing for a cancelled status', async () => {
+    (prisma.order.findUnique as any).mockResolvedValue(null);
     (prisma.pendingCheckout.findUnique as any).mockResolvedValue(pendingRow);
 
     const result = await confirmChapaPayment('tx-123', 'cancelled');
@@ -309,6 +299,7 @@ describe.skip('confirmChapaPayment', () => {
   });
 
   it('still creates the order and allows negative stock when stock is insufficient at confirm time', async () => {
+    (prisma.order.findUnique as any).mockResolvedValue(null);
     (prisma.pendingCheckout.findUnique as any).mockResolvedValue(pendingRow);
     const mockTx = makeMockTx();
     mockTx.productVariant.findUnique.mockResolvedValue({ stock: 0, unitPrice: '750.00' });
@@ -321,6 +312,7 @@ describe.skip('confirmChapaPayment', () => {
   });
 
   it('still resolves created: true even when the confirmation email fails', async () => {
+    (prisma.order.findUnique as any).mockResolvedValue(null);
     (prisma.pendingCheckout.findUnique as any).mockResolvedValue(pendingRow);
     const mockTx = makeMockTx();
     (prisma.$transaction as any).mockImplementation(async (fn: any) => fn(mockTx));
