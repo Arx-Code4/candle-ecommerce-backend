@@ -34,21 +34,21 @@
 
 # 🛠 Tech Stack
 
-| Technology | Purpose |
-|------------|---------|
-| **Node.js** | Runtime |
-| **Express** | Web Framework |
+| Technology     | Purpose              |
+| -------------- | -------------------- |
+| **Node.js**    | Runtime              |
+| **Express**    | Web Framework        |
 | **TypeScript** | Programming Language |
-| **Prisma** | ORM |
-| **PostgreSQL** | Database |
-| **Zod** | Validation |
-| **JWT** | Authentication |
-| **bcrypt** | Password Hashing |
-| **Pino** | Logging |
-| **Vitest** | Testing |
-| **ESLint** | Linting |
-| **Prettier** | Code Formatting |
-| **Husky** | Git Hooks |
+| **Prisma**     | ORM                  |
+| **PostgreSQL** | Database             |
+| **Zod**        | Validation           |
+| **JWT**        | Authentication       |
+| **bcrypt**     | Password Hashing     |
+| **Pino**       | Logging              |
+| **Vitest**     | Testing              |
+| **ESLint**     | Linting              |
+| **Prettier**   | Code Formatting      |
+| **Husky**      | Git Hooks            |
 
 ---
 
@@ -139,16 +139,16 @@ The server should now be running successfully.
 
 # 📜 Available Scripts
 
-| Command | Description |
-|----------|-------------|
-| `npm run dev` | Start development server |
-| `npm run build` | Compile TypeScript |
-| `npm run start` | Run compiled application |
-| `npm run lint` | Run ESLint |
-| `npm run format` | Format code using Prettier |
-| `npm run test` | Run tests |
-| `npm run prisma:generate` | Generate Prisma Client |
-| `npm run prisma:migrate` | Apply database migrations |
+| Command                   | Description                |
+| ------------------------- | -------------------------- |
+| `npm run dev`             | Start development server   |
+| `npm run build`           | Compile TypeScript         |
+| `npm run start`           | Run compiled application   |
+| `npm run lint`            | Run ESLint                 |
+| `npm run format`          | Format code using Prettier |
+| `npm run test`            | Run tests                  |
+| `npm run prisma:generate` | Generate Prisma Client     |
+| `npm run prisma:migrate`  | Apply database migrations  |
 
 ---
 

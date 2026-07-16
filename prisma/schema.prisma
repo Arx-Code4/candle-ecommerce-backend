@@ -4,4 +4,158 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  // No url field here — Prisma 7 reads the connection from prisma.config.ts
+}
+
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+enum OrderStatus {
+  PROCESSING
+  SHIPPED
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(CUSTOMER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cart                 Cart?
+  orders               Order[]
+  passwordResetTokens  PasswordResetToken[]
+  pendingCheckouts     PendingCheckout[]
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String
+  description String
+  price       Decimal
+  isPublished Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  photos   ProductPhoto[]
+  variants ProductVariant[]
+}
+
+model ProductPhoto {
+  id        String @id @default(uuid())
+  productId String
+  url       String
+  sortOrder Int    @default(0)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model ProductVariant {
+  id        String   @id @default(uuid())
+  productId String
+  scent     String
+  size      String
+  stock     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  @@unique([productId, scent, size])
+  @@index([scent])
+  @@index([size])
+}
+
+model Cart {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items CartItem[]
+}
+
+model CartItem {
+  id               String @id @default(uuid())
+  cartId           String
+  productVariantId String
+  quantity         Int    @default(1)
+
+  cart           Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productVariant ProductVariant @relation(fields: [productVariantId], references: [id])
+
+  @@unique([cartId, productVariantId])
+}
+
+model Order {
+  id              String      @id @default(uuid())
+  userId          String
+  status          OrderStatus @default(PROCESSING)
+  chapaTxRef      String      @unique
+  totalAmount     Decimal
+  shippingName    String
+  shippingPhone   String
+  shippingAddress String
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  user  User        @relation(fields: [userId], references: [id])
+  items OrderItem[]
+
+  @@index([userId])
+}
+
+model OrderItem {
+  id                  String  @id @default(uuid())
+  orderId             String
+  productVariantId    String
+  productNameSnapshot String
+  scentSnapshot       String
+  sizeSnapshot        String
+  unitPriceSnapshot   Decimal
+  quantity            Int
+
+  order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productVariant ProductVariant @relation(fields: [productVariantId], references: [id], onDelete: Restrict)
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// INFERRED MODEL — not present in eco-4's entity list or ER diagram.
+// Reconstructed from eco-9.1.3's prose description of createChapaSession /
+// confirmChapaPayment behavior (cartSnapshot, expectedAmount, expiresAt ≈
+// now + 30 min, lookup by txRef). eco-4 appears to predate the
+// checkout/payment design and was never amended to include this model.
+// FLAG FOR TEAM: confirm this shape against whoever actually designed the
+// checkout flow — field names/types below are a best reconstruction, not a
+// verified spec, unlike every other model in this file.
+model PendingCheckout {
+  id             String   @id @default(uuid())
+  txRef          String   @unique
+  userId         String
+  cartSnapshot   Json
+  expectedAmount Decimal
+  shippingName   String
+  shippingPhone  String
+  shippingAddress String
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
