@@ -1,8 +1,29 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../src/config/db.js';
 import {
   getPublishedProducts,
   getPublishedProductById,
 } from '../../src/services/product.service.js';
+
+type ProductWithVariants = Prisma.ProductGetPayload<{
+  select: {
+    id: true;
+    name: true;
+    description: true;
+    price: true;
+    isPublished: true;
+    createdAt: true;
+    updatedAt: true;
+    variants: {
+      select: {
+        id: true;
+        scent: true;
+        size: true;
+        stock: true;
+      };
+    };
+  };
+}>;
 
 vi.mock('../../src/config/db.js', () => ({
   prisma: {
@@ -53,12 +74,24 @@ describe.skip('getPublishedProducts', () => {
   });
 
   it('returns the full variant list of a matching product, not just the matching variant', async () => {
-    const variants = [
-      { id: '1', scent: 'vanilla', size: 'large', stock: 5 },
-      { id: '2', scent: 'lavender', size: 'small', stock: 3 },
-      { id: '3', scent: 'rose', size: 'medium', stock: 1 },
+    const mockProducts: ProductWithVariants[] = [
+      {
+        id: 'p1',
+        name: 'Candle',
+        description: 'A test candle',
+        price: new Prisma.Decimal(19.99),
+        isPublished: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        variants: [
+          { id: '1', scent: 'vanilla', size: 'large', stock: 5 },
+          { id: '2', scent: 'lavender', size: 'small', stock: 3 },
+          { id: '3', scent: 'rose', size: 'medium', stock: 1 },
+        ],
+      },
     ];
-    vi.mocked(prisma.product.findMany).mockResolvedValue([{ id: 'p1', name: 'Candle', variants }]);
+
+    vi.mocked(prisma.product.findMany).mockResolvedValue(mockProducts);
     vi.mocked(prisma.product.count).mockResolvedValue(1);
 
     const result = await getPublishedProducts({ scent: 'vanilla' });
@@ -95,7 +128,6 @@ describe.skip('getPublishedProducts', () => {
     );
   });
 });
-
 describe.skip('getPublishedProductById', () => {
   it('resolves the full detail shape when the product exists and is published', async () => {
     const product = {
@@ -104,6 +136,10 @@ describe.skip('getPublishedProductById', () => {
       isPublished: true,
       photos: ['a.jpg'],
       variants: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      description: '',
+      price: new Prisma.Decimal(10.99),
     };
     vi.mocked(prisma.product.findFirst).mockResolvedValue(product);
 
@@ -122,7 +158,17 @@ describe.skip('getPublishedProductById', () => {
   });
 
   it('throws the identical ApiError 404 "Product not found" when the product exists but is not published', async () => {
-    const product = { id: 'p1', name: 'Candle', isPublished: false, photos: [], variants: [] };
+    const product = {
+      id: 'p1',
+      name: 'Candle',
+      isPublished: false,
+      photos: ['a.jpg'],
+      variants: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      description: '',
+      price: new Prisma.Decimal(10.99),
+    };
     vi.mocked(prisma.product.findFirst).mockResolvedValue(product);
 
     await expect(getPublishedProductById('p1')).rejects.toMatchObject({
@@ -132,7 +178,17 @@ describe.skip('getPublishedProductById', () => {
   });
 
   it('resolves successfully with an empty variants array when the product has zero variants', async () => {
-    const product = { id: 'p1', name: 'Candle', isPublished: true, photos: [], variants: [] };
+    const product = {
+      id: 'p1',
+      name: 'Candle',
+      isPublished: true,
+      photos: ['a.jpg'],
+      variants: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      description: '',
+      price: new Prisma.Decimal(10.99),
+    };
     vi.mocked(prisma.product.findFirst).mockResolvedValue(product);
 
     const result = await getPublishedProductById('p1');
