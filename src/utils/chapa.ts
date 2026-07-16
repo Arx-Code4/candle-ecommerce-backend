@@ -15,6 +15,6 @@ export async function verifyTransaction(
   throw new Error('Not implemented');
 }
 
-export function verifyWebhookSignature(rawBody: Buffer, signature: string): boolean {
+export function verifyWebhookSignature(rawBody: string, signatureHeader: string): boolean {
   throw new Error('Not implemented');
 }

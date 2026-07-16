@@ -108,7 +108,7 @@ describe.skip('verifyTransaction', () => {
 });
 
 describe.skip('verifyWebhookSignature', () => {
-  const rawBody = Buffer.from(JSON.stringify({ event: 'charge.success', tx_ref: 'tx-123' }));
+  const rawBody = JSON.stringify({ event: 'charge.success', tx_ref: 'tx-123' });
 
   function computeValidSignature(): string {
     return crypto.createHmac('sha256', env.CHAPA_WEBHOOK_SECRET).update(rawBody).digest('hex');
@@ -116,42 +116,28 @@ describe.skip('verifyWebhookSignature', () => {
 
   it('returns true for a valid signature', () => {
     const signature = computeValidSignature();
-
-    const result = verifyWebhookSignature(rawBody, signature);
-
-    expect(result).toBe(true);
+    expect(verifyWebhookSignature(rawBody, signature)).toBe(true);
   });
 
   it('returns false for a tampered signature', () => {
     const validSignature = computeValidSignature();
     const tampered = validSignature.slice(0, -1) + (validSignature.slice(-1) === 'a' ? 'b' : 'a');
-
-    const result = verifyWebhookSignature(rawBody, tampered);
-
-    expect(result).toBe(false);
+    expect(verifyWebhookSignature(rawBody, tampered)).toBe(false);
   });
 
   it('returns false, not a throw, when the signature header is missing', () => {
-    const result = verifyWebhookSignature(rawBody, undefined as any);
-
-    expect(result).toBe(false);
+    expect(verifyWebhookSignature(rawBody, undefined as any)).toBe(false);
   });
 
   it('uses crypto.timingSafeEqual for the comparison, not ===', () => {
     const signature = computeValidSignature();
     const spy = vi.spyOn(crypto, 'timingSafeEqual');
-
     verifyWebhookSignature(rawBody, signature);
-
     expect(spy).toHaveBeenCalled();
     spy.mockRestore();
   });
 
   it('returns false, not a throw, when the signature length differs from expected', () => {
-    const shortSignature = 'deadbeef';
-
-    const result = verifyWebhookSignature(rawBody, shortSignature);
-
-    expect(result).toBe(false);
+    expect(verifyWebhookSignature(rawBody, 'deadbeef')).toBe(false);
   });
 });
