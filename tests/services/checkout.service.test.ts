@@ -9,37 +9,75 @@ import type { CartWithItems, CartItemView } from '../../src/services/cart.servic
 import * as chapa from '../../src/utils/chapa.js';
 import * as notificationService from '../../src/services/notification.service.js';
 import ApiError from '../../src/utils/ApiError.js';
+import {
+  getOrCreateCart,
+  addItemToCart,
+  updateCartItemQuantity,
+  removeCartItem,
+} from '../../src/services/cart.service.js';
+
+// Shape returned by prisma.cart.upsert({ include: { items: { include: { productVariant: { include: { product: ... } } } } } })
+type CartUpsertResult = Prisma.CartGetPayload<{
+  include: {
+    items: {
+      include: {
+        productVariant: {
+          include: {
+            product: {
+              select: {
+                isPublished: true;
+                name: true;
+                price: true;
+              };
+            };
+          };
+        };
+      };
+    };
+  };
+}>;
+
+// Shape returned by prisma.cartItem.upsert / update (with productVariant include for stock checks)
+type CartItemUpsertResult = Prisma.CartItemGetPayload<{
+  include: {
+    productVariant: true;
+  };
+}>;
+
+type VariantWithProduct = Prisma.ProductVariantGetPayload<{
+  include: {
+    product: {
+      select: {
+        isPublished: true;
+      };
+    };
+  };
+}>;
 
 vi.mock('../../src/config/db.js', () => ({
   prisma: {
-    pendingCheckout: {
-      create: vi.fn(),
-      findUnique: vi.fn(),
+    cart: {
+      upsert: vi.fn(),
+      delete: vi.fn(),
     },
-    order: {
-      findUnique: vi.fn(),
+    cartItem: {
+      upsert: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      findFirst: vi.fn(),
     },
-    $transaction: vi.fn(),
+    productVariant: {
+      findFirst: vi.fn(),
+    },
   },
 }));
 
-vi.mock('../../src/services/cart.service.js', () => ({
-  getOrCreateCart: vi.fn(),
-}));
-
-vi.mock('../../src/utils/chapa.js', () => ({
-  initializeTransaction: vi.fn(),
-}));
-
-vi.mock('../../src/services/notification.service.js', () => ({
-  sendOrderConfirmationEmail: vi.fn(),
-}));
-
-const shipping = {
-  shippingName: 'Abebe',
-  shippingPhone: '+251911223344',
-  shippingAddress: 'Addis Ababa',
-};
+const userId = 'user-1';
+const otherUserId = 'user-2';
+const cartId = 'cart-1';
+const cartItemId = 'cart-item-1';
+const variantId = 'variant-1';
+const productId = 'product-1';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -143,12 +181,25 @@ describe.skip('createChapaSession', () => {
     const emptyCart = buildCart({ items: [], total: '0' });
     vi.mocked(cartService.getOrCreateCart).mockResolvedValue(emptyCart);
 
-    await expect(createChapaSession('user-1', shipping)).rejects.toMatchObject({
-      statusCode: 400,
-      message: 'Your cart is empty',
+      expect(prisma.cart.upsert).toHaveBeenCalled();
     });
-    expect(chapa.initializeTransaction).not.toHaveBeenCalled();
-  });
+
+    //case not included in documentation - tests for a cart with no item
+    it('returns items: [] when an existing cart already has zero items', async () => {
+      const cart: CartUpsertResult = {
+        id: cartId,
+        userId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        items: [],
+      };
+      vi.mocked(prisma.cart.upsert).mockResolvedValueOnce(cart);
+
+      const result = await getOrCreateCart(userId);
+
+      expect(result.items).toEqual([]);
+      expect(result.total).toBe('0.00');
+    });
 
   it('throws ApiError(409) with unavailableItems when a cart line exceeds current stock', async () => {
     const mockCart = buildCart({
@@ -190,8 +241,7 @@ describe.skip('createChapaSession', () => {
     const providerError = new ApiError(502, 'Unable to reach payment provider, please try again');
     vi.mocked(chapa.initializeTransaction).mockRejectedValue(providerError);
 
-    await expect(createChapaSession('user-1', shipping)).rejects.toBe(providerError);
-  });
+      const result = await addItemToCart(userId, variantId, 2);
 
   it('creates two independent PendingCheckout rows for two calls by the same user', async () => {
     const mockCart = buildCart({
@@ -203,13 +253,37 @@ describe.skip('createChapaSession', () => {
       .mockResolvedValueOnce({ checkoutUrl: 'https://checkout.chapa.co/first' })
       .mockResolvedValueOnce({ checkoutUrl: 'https://checkout.chapa.co/second' });
 
-    const first = await createChapaSession('user-1', shipping);
-    const second = await createChapaSession('user-1', shipping);
+    it('caps quantity to stock instead of erroring when requested quantity exceeds stock', async () => {
+      const variant: VariantWithProduct = {
+        id: variantId,
+        productId,
+        scent: 'vanilla',
+        size: 'large',
+        stock: 5,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        product: { isPublished: true },
+      };
+      vi.mocked(prisma.productVariant.findFirst).mockResolvedValueOnce(variant);
 
-    expect(first.txRef).not.toBe(second.txRef);
-    expect(prisma.pendingCheckout.create).toHaveBeenCalledTimes(2);
-  });
-});
+      const cartItem: CartItemUpsertResult = {
+        id: cartItemId,
+        cartId,
+        productVariantId: variantId,
+        quantity: 5,
+        productVariant: {
+          id: variantId,
+          productId,
+          scent: 'vanilla',
+          size: 'large',
+          stock: 5,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      };
+      vi.mocked(prisma.cartItem.upsert).mockResolvedValueOnce(cartItem);
+
+      const result = await addItemToCart(userId, variantId, 4);
 
 describe.skip('confirmChapaPayment', () => {
   function makeMockTx() {
@@ -232,7 +306,7 @@ describe.skip('confirmChapaPayment', () => {
     vi.mocked(prisma.$transaction).mockImplementation(async (fn: any) => fn(mockTx));
     vi.mocked(notificationService.sendOrderConfirmationEmail).mockResolvedValue(undefined);
 
-    const result = await confirmChapaPayment('tx-123', 'success');
+      const result = await addItemToCart(userId, variantId, 3);
 
     expect(result).toEqual({ orderId: 'order-1', created: true });
     expect(mockTx.order.create).toHaveBeenCalledTimes(1);
@@ -246,7 +320,7 @@ describe.skip('confirmChapaPayment', () => {
     const mockTx = makeMockTx();
     vi.mocked(prisma.$transaction).mockImplementation(async (fn: any) => fn(mockTx));
 
-    await confirmChapaPayment('tx-123', 'success');
+      const result = await addItemToCart(userId, variantId);
 
     const orderItemArgs = mockTx.orderItem.create.mock.calls[0][0];
     const snapshot = pendingRow.cartSnapshot as any[];
@@ -270,50 +344,101 @@ describe.skip('confirmChapaPayment', () => {
       return undefined;
     });
 
-    await confirmChapaPayment('tx-123', 'success');
+    it('reads stock once and does not re-check or lock against a concurrent race', async () => {
+      const variant: VariantWithProduct = {
+        id: variantId,
+        productId,
+        scent: 'vanilla',
+        size: 'large',
+        stock: 5,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        product: { isPublished: true },
+      };
+      vi.mocked(prisma.productVariant.findFirst).mockResolvedValueOnce(variant);
 
-    expect(notificationService.sendOrderConfirmationEmail).toHaveBeenCalled();
+      const cartItem: CartItemUpsertResult = {
+        id: cartItemId,
+        cartId,
+        productVariantId: variantId,
+        quantity: 1,
+        productVariant: {
+          id: variantId,
+          productId,
+          scent: 'vanilla',
+          size: 'large',
+          stock: 5,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      };
+      vi.mocked(prisma.cartItem.upsert).mockResolvedValueOnce(cartItem);
+
+      await addItemToCart(userId, variantId, 1);
+
+      expect(prisma.productVariant.findFirst).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('throws ApiError(404) for an unknown txRef', async () => {
     vi.mocked(prisma.order.findUnique).mockResolvedValue(null);
     vi.mocked(prisma.pendingCheckout.findUnique).mockResolvedValue(null);
 
-    await expect(confirmChapaPayment('bad-tx', 'success')).rejects.toMatchObject({
-      statusCode: 404,
-      message: 'Unknown transaction reference',
+      expect(result.cartItem.quantity).toBe(4);
+      expect(result.wasCapped).toBe(false);
     });
-  });
 
   it('is idempotent — a duplicate webhook for an already-confirmed txRef returns created:false without touching the transaction', async () => {
     vi.mocked(prisma.order.findUnique).mockResolvedValue(buildOrder({ chapaTxRef: 'tx-123' }));
 
-    const result = await confirmChapaPayment('tx-123', 'success');
+    // case not included in documentation - tests when quantity equals stock
+    it('accepts a requested quantity exactly equal to stock without capping', async () => {
+      const existing: CartItemUpsertResult = {
+        id: cartItemId,
+        cartId,
+        productVariantId: variantId,
+        quantity: 1,
+        productVariant: {
+          id: variantId,
+          productId,
+          scent: 'vanilla',
+          size: 'large',
+          stock: 5,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      };
+      vi.mocked(prisma.cartItem.findFirst).mockResolvedValueOnce(existing);
+      vi.mocked(prisma.cartItem.update).mockResolvedValueOnce({ ...existing, quantity: 5 });
 
-    expect(result).toEqual({ orderId: 'order-1', created: false });
-    expect(prisma.pendingCheckout.findUnique).not.toHaveBeenCalled();
-    expect(prisma.$transaction).not.toHaveBeenCalled();
-    expect(notificationService.sendOrderConfirmationEmail).not.toHaveBeenCalled();
-  });
+      const result = await updateCartItemQuantity(userId, cartItemId, 5);
 
   it('creates nothing for a failed status', async () => {
     vi.mocked(prisma.order.findUnique).mockResolvedValue(null);
     vi.mocked(prisma.pendingCheckout.findUnique).mockResolvedValue(buildPendingCheckout());
 
-    const result = await confirmChapaPayment('tx-123', 'failed');
+    it('throws 404 when the cart item does not exist', async () => {
+      vi.mocked(prisma.cartItem.findFirst).mockResolvedValueOnce(null);
 
-    expect(result).toEqual({ created: false });
-    expect(prisma.$transaction).not.toHaveBeenCalled();
-  });
+      await expect(updateCartItemQuantity(userId, 'bad-item', 2)).rejects.toEqual(
+        new ApiError(404, 'Cart item not found'),
+      );
+    });
 
   it('creates nothing for a cancelled status', async () => {
     vi.mocked(prisma.order.findUnique).mockResolvedValue(null);
     vi.mocked(prisma.pendingCheckout.findUnique).mockResolvedValue(buildPendingCheckout());
 
-    const result = await confirmChapaPayment('tx-123', 'cancelled');
+      await expect(updateCartItemQuantity(otherUserId, cartItemId, 2)).rejects.toEqual(
+        new ApiError(404, 'Cart item not found'),
+      );
 
-    expect(result).toEqual({ created: false });
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.cartItem.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: cartItemId, cart: { userId: otherUserId } }),
+        }),
+      );
+    });
   });
 
   it('still creates the order and allows negative stock when stock is insufficient at confirm time', async () => {
@@ -323,11 +448,10 @@ describe.skip('confirmChapaPayment', () => {
     mockTx.productVariant.findUnique.mockResolvedValue({ stock: 0, unitPrice: '750.00' });
     vi.mocked(prisma.$transaction).mockImplementation(async (fn: any) => fn(mockTx));
 
-    const result = await confirmChapaPayment('tx-123', 'success');
+      const result = await removeCartItem(userId, cartItemId);
 
-    expect(result).toEqual({ orderId: 'order-1', created: true });
-    expect(mockTx.order.create).toHaveBeenCalledTimes(1);
-  });
+      expect(result.cartTotal).toBeDefined();
+    });
 
   it('still resolves created: true even when the confirmation email fails', async () => {
     vi.mocked(prisma.order.findUnique).mockResolvedValue(null);
@@ -338,8 +462,18 @@ describe.skip('confirmChapaPayment', () => {
       new Error('SMTP down'),
     );
 
-    const result = await confirmChapaPayment('tx-123', 'success');
+      const result = await removeCartItem(userId, cartItemId);
 
-    expect(result).toEqual({ orderId: 'order-1', created: true });
+      expect(result.cartTotal).toBe('0.00');
+      expect(prisma.cart.delete).not.toHaveBeenCalled();
+    });
+
+    it('throws 404 when the item does not exist or is not owned', async () => {
+      vi.mocked(prisma.cartItem.delete).mockRejectedValueOnce(new Error('Record not found'));
+
+      await expect(removeCartItem(userId, 'bad-item')).rejects.toEqual(
+        new ApiError(404, 'Cart item not found'),
+      );
+    });
   });
 });
