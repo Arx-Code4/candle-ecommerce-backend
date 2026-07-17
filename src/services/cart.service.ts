@@ -1,18 +1,54 @@
-// Placeholder — not yet implemented.
-// Placeholder — not yet implemented. Full spec/tests land with the Cart module docs.
-
-export async function getOrCreateCart(userId: string): Promise<unknown> {
-  throw new Error('Not implemented');
+export interface CartItemView {
+  id: string;
+  productVariantId: string;
+  quantity: number;
+  name: string;
+  scent: string;
+  size: string;
+  unitPrice: string;
+  subtotal: string;
+  available: boolean;
 }
 
-export async function addItemToCart(userId: string, variantId: string): Promise<unknown> {
-  throw new Error('Not implemented');
+export interface CartWithItems {
+  items: CartItemView[];
+  total: string;
 }
 
-export async function updateCartItemQuantity(itemId: string, quantity: number): Promise<unknown> {
-  throw new Error('Not implemented');
+export interface CartMutationResult {
+  cartItem: CartItemView;
+  cartTotal: string;
+  wasCapped: boolean;
+  cappedTo?: number;
 }
 
-export async function removeCartItem(itemId: string): Promise<unknown> {
-  throw new Error('Not implemented');
+export interface RemoveCartItemResult {
+  cartTotal: string;
 }
+
+export const getOrCreateCart = async (userId: string): Promise<CartWithItems> => {
+  throw new Error('Not implemented');
+};
+
+export const addItemToCart = async (
+  userId: string,
+  productVariantId: string,
+  quantity?: number,
+): Promise<CartMutationResult> => {
+  throw new Error('Not implemented');
+};
+
+export const updateCartItemQuantity = async (
+  userId: string,
+  cartItemId: string,
+  quantity: number,
+): Promise<CartMutationResult> => {
+  throw new Error('Not implemented');
+};
+
+export const removeCartItem = async (
+  userId: string,
+  cartItemId: string,
+): Promise<RemoveCartItemResult> => {
+  throw new Error('Not implemented');
+};
