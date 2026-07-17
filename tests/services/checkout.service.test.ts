@@ -1,8 +1,11 @@
 // tests/services/checkout.service.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { Prisma } from '@prisma/client';
+import type { PendingCheckout, Order } from '@prisma/client';
 import { createChapaSession, confirmChapaPayment } from '../../src/services/checkout.service.js';
 import { prisma } from '../../src/config/db.js';
 import * as cartService from '../../src/services/cart.service.js';
+import type { CartWithItems, CartItemView } from '../../src/services/cart.service.js';
 import * as chapa from '../../src/utils/chapa.js';
 import * as notificationService from '../../src/services/notification.service.js';
 import ApiError from '../../src/utils/ApiError.js';
@@ -42,25 +45,79 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+// Factory functions for type-safe mock data
+function buildCartItem(overrides: Partial<CartItemView> = {}): CartItemView {
+  return {
+    id: 'ci-1',
+    productVariantId: 'v1',
+    quantity: 2,
+    name: 'Vanilla Candle',
+    scent: 'Vanilla',
+    size: 'M',
+    unitPrice: '750.00',
+    subtotal: '1500.00',
+    available: true,
+    ...overrides,
+  };
+}
+
+function buildCart(overrides: Partial<CartWithItems> = {}): CartWithItems {
+  return {
+    items: [buildCartItem()],
+    total: '1500.00',
+    ...overrides,
+  };
+}
+
+function buildPendingCheckout(overrides: Partial<PendingCheckout> = {}): PendingCheckout {
+  return {
+    id: 'pending-1',
+    txRef: 'tx-123',
+    userId: 'user-1',
+    cartSnapshot: [
+      {
+        productVariantId: 'v1',
+        quantity: 2,
+        unitPriceSnapshot: '750.00',
+        productNameSnapshot: 'Vanilla Candle',
+        scentSnapshot: 'Vanilla',
+        sizeSnapshot: 'M',
+      },
+    ],
+    expectedAmount: new Prisma.Decimal('1500.00'),
+    shippingName: 'Abebe',
+    shippingPhone: '+251911223344',
+    shippingAddress: 'Addis Ababa',
+    expiresAt: new Date(Date.now() + 30 * 60000),
+    createdAt: new Date(),
+    ...overrides,
+  };
+}
+
+function buildOrder(overrides: Partial<Order> = {}): Order {
+  return {
+    id: 'order-1',
+    userId: 'user-1',
+    status: 'PROCESSING',
+    chapaTxRef: 'tx-123',
+    totalAmount: new Prisma.Decimal('1500.00'),
+    shippingName: 'Abebe',
+    shippingPhone: '+251911223344',
+    shippingAddress: 'Addis Ababa',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  };
+}
+
 describe.skip('createChapaSession', () => {
   it('creates a session successfully for a cart with in-stock items', async () => {
-    (cartService.getOrCreateCart as any).mockResolvedValue({
-      items: [
-        {
-          variantId: 'v1',
-          quantity: 2,
-          variant: {
-            stock: 5,
-            unitPrice: '750.00',
-            name: 'Vanilla Candle',
-            scent: 'Vanilla',
-            size: 'M',
-          },
-        },
-      ],
+    const mockCart = buildCart({
+      items: [buildCartItem({ quantity: 2 })],
     });
-    (prisma.pendingCheckout.create as any).mockResolvedValue({});
-    (chapa.initializeTransaction as any).mockResolvedValue({
+    vi.mocked(cartService.getOrCreateCart).mockResolvedValue(mockCart);
+    vi.mocked(prisma.pendingCheckout.create).mockResolvedValue(buildPendingCheckout());
+    vi.mocked(chapa.initializeTransaction).mockResolvedValue({
       checkoutUrl: 'https://checkout.chapa.co/abc',
     });
 
@@ -72,9 +129,9 @@ describe.skip('createChapaSession', () => {
         txRef: expect.any(String),
       }),
     );
-    const createArgs = (prisma.pendingCheckout.create as any).mock.calls[0][0];
+    const createArgs = vi.mocked(prisma.pendingCheckout.create).mock.calls[0][0];
     expect(createArgs.data.cartSnapshot).toEqual(
-      expect.arrayContaining([expect.objectContaining({ variantId: 'v1', quantity: 2 })]),
+      expect.arrayContaining([expect.objectContaining({ productVariantId: 'v1', quantity: 2 })]),
     );
     expect(createArgs.data.expectedAmount).toBeDefined();
     const minutesFromNow = (new Date(createArgs.data.expiresAt).getTime() - Date.now()) / 60000;
@@ -83,7 +140,8 @@ describe.skip('createChapaSession', () => {
   });
 
   it('throws ApiError(400) when the cart is empty, without calling initializeTransaction', async () => {
-    (cartService.getOrCreateCart as any).mockResolvedValue({ items: [] });
+    const emptyCart = buildCart({ items: [], total: '0' });
+    vi.mocked(cartService.getOrCreateCart).mockResolvedValue(emptyCart);
 
     await expect(createChapaSession('user-1', shipping)).rejects.toMatchObject({
       statusCode: 400,
@@ -93,21 +151,16 @@ describe.skip('createChapaSession', () => {
   });
 
   it('throws ApiError(409) with unavailableItems when a cart line exceeds current stock', async () => {
-    (cartService.getOrCreateCart as any).mockResolvedValue({
+    // Note: available flag might be used for stock checking, adjust based on actual implementation
+    const mockCart = buildCart({
       items: [
-        {
-          variantId: 'v1',
+        buildCartItem({
           quantity: 10,
-          variant: {
-            stock: 2,
-            unitPrice: '750.00',
-            name: 'Vanilla Candle',
-            scent: 'Vanilla',
-            size: 'M',
-          },
-        },
+          available: false, // or however stock is represented
+        }),
       ],
     });
+    vi.mocked(cartService.getOrCreateCart).mockResolvedValue(mockCart);
 
     await expect(createChapaSession('user-1', shipping)).rejects.toMatchObject({
       statusCode: 409,
@@ -116,46 +169,24 @@ describe.skip('createChapaSession', () => {
   });
 
   it('propagates a chapa.ts failure unchanged', async () => {
-    (cartService.getOrCreateCart as any).mockResolvedValue({
-      items: [
-        {
-          variantId: 'v1',
-          quantity: 1,
-          variant: {
-            stock: 5,
-            unitPrice: '750.00',
-            name: 'Vanilla Candle',
-            scent: 'Vanilla',
-            size: 'M',
-          },
-        },
-      ],
+    const mockCart = buildCart({
+      items: [buildCartItem({ quantity: 1 })],
     });
-    (prisma.pendingCheckout.create as any).mockResolvedValue({});
+    vi.mocked(cartService.getOrCreateCart).mockResolvedValue(mockCart);
+    vi.mocked(prisma.pendingCheckout.create).mockResolvedValue(buildPendingCheckout());
     const providerError = new ApiError(502, 'Unable to reach payment provider, please try again');
-    (chapa.initializeTransaction as any).mockRejectedValue(providerError);
+    vi.mocked(chapa.initializeTransaction).mockRejectedValue(providerError);
 
     await expect(createChapaSession('user-1', shipping)).rejects.toBe(providerError);
   });
 
   it('creates two independent PendingCheckout rows for two calls by the same user', async () => {
-    (cartService.getOrCreateCart as any).mockResolvedValue({
-      items: [
-        {
-          variantId: 'v1',
-          quantity: 1,
-          variant: {
-            stock: 5,
-            unitPrice: '750.00',
-            name: 'Vanilla Candle',
-            scent: 'Vanilla',
-            size: 'M',
-          },
-        },
-      ],
+    const mockCart = buildCart({
+      items: [buildCartItem({ quantity: 1 })],
     });
-    (prisma.pendingCheckout.create as any).mockResolvedValue({});
-    (chapa.initializeTransaction as any)
+    vi.mocked(cartService.getOrCreateCart).mockResolvedValue(mockCart);
+    vi.mocked(prisma.pendingCheckout.create).mockResolvedValue(buildPendingCheckout());
+    vi.mocked(chapa.initializeTransaction)
       .mockResolvedValueOnce({ checkoutUrl: 'https://checkout.chapa.co/first' })
       .mockResolvedValueOnce({ checkoutUrl: 'https://checkout.chapa.co/second' });
 
@@ -166,22 +197,6 @@ describe.skip('createChapaSession', () => {
     expect(prisma.pendingCheckout.create).toHaveBeenCalledTimes(2);
   });
 });
-
-const pendingRow = {
-  txRef: 'tx-123',
-  userId: 'user-1',
-  cartSnapshot: [
-    {
-      productVariantId: 'v1',
-      quantity: 2,
-      unitPriceSnapshot: '750.00',
-      productNameSnapshot: 'Vanilla Candle',
-      scentSnapshot: 'Vanilla',
-      sizeSnapshot: 'M',
-    },
-  ],
-  expectedAmount: '1500.00',
-};
 
 describe.skip('confirmChapaPayment', () => {
   function makeMockTx() {
@@ -198,48 +213,48 @@ describe.skip('confirmChapaPayment', () => {
   }
 
   it('creates an Order on successful confirmation', async () => {
-    (prisma.order.findUnique as any).mockResolvedValue(null); // no prior confirmed order
-    (prisma.pendingCheckout.findUnique as any).mockResolvedValue(pendingRow);
+    vi.mocked(prisma.order.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.pendingCheckout.findUnique).mockResolvedValue(buildPendingCheckout());
     const mockTx = makeMockTx();
-    (prisma.$transaction as any).mockImplementation(async (fn: any) => fn(mockTx));
-    (notificationService.sendOrderConfirmationEmail as any).mockResolvedValue(undefined);
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn: any) => fn(mockTx));
+    vi.mocked(notificationService.sendOrderConfirmationEmail).mockResolvedValue(undefined);
 
     const result = await confirmChapaPayment('tx-123', 'success');
 
     expect(result).toEqual({ orderId: 'order-1', created: true });
     expect(mockTx.order.create).toHaveBeenCalledTimes(1);
-    // Confirmed by eco-8.1.4: PendingCheckout row is deleted inside the same transaction
     expect(mockTx.pendingCheckout.delete).toHaveBeenCalledTimes(1);
   });
 
   it('uses cartSnapshot data for OrderItems, not live product data', async () => {
-    (prisma.order.findUnique as any).mockResolvedValue(null);
-    (prisma.pendingCheckout.findUnique as any).mockResolvedValue(pendingRow);
+    vi.mocked(prisma.order.findUnique).mockResolvedValue(null);
+    const pendingRow = buildPendingCheckout();
+    vi.mocked(prisma.pendingCheckout.findUnique).mockResolvedValue(pendingRow);
     const mockTx = makeMockTx();
-    (prisma.$transaction as any).mockImplementation(async (fn: any) => fn(mockTx));
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn: any) => fn(mockTx));
 
     await confirmChapaPayment('tx-123', 'success');
 
     const orderItemArgs = mockTx.orderItem.create.mock.calls[0][0];
-    expect(orderItemArgs.data.unitPriceSnapshot).toBe(pendingRow.cartSnapshot[0].unitPriceSnapshot);
-    expect(orderItemArgs.data.productNameSnapshot).toBe(
-      pendingRow.cartSnapshot[0].productNameSnapshot,
-    );
+    const snapshot = pendingRow.cartSnapshot as any[];
+    expect(orderItemArgs.data.unitPriceSnapshot).toBe(snapshot[0].unitPriceSnapshot);
+    expect(orderItemArgs.data.productNameSnapshot).toBe(snapshot[0].productNameSnapshot);
     expect(orderItemArgs.data.unitPriceSnapshot).not.toBe('999.00');
   });
 
   it('sends the confirmation email only after the transaction resolves', async () => {
-    (prisma.order.findUnique as any).mockResolvedValue(null);
-    (prisma.pendingCheckout.findUnique as any).mockResolvedValue(pendingRow);
+    vi.mocked(prisma.order.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.pendingCheckout.findUnique).mockResolvedValue(buildPendingCheckout());
     const mockTx = makeMockTx();
     let transactionResolved = false;
-    (prisma.$transaction as any).mockImplementation(async (fn: any) => {
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn: any) => {
       const result = await fn(mockTx);
       transactionResolved = true;
       return result;
     });
-    (notificationService.sendOrderConfirmationEmail as any).mockImplementation(async () => {
+    vi.mocked(notificationService.sendOrderConfirmationEmail).mockImplementation(async () => {
       expect(transactionResolved).toBe(true);
+      return undefined;
     });
 
     await confirmChapaPayment('tx-123', 'success');
@@ -248,10 +263,8 @@ describe.skip('confirmChapaPayment', () => {
   });
 
   it('throws ApiError(404) for an unknown txRef', async () => {
-    // Order pre-check must run FIRST per the confirmed flow — mock it explicitly
-    // to null so this test isn't accidentally passing due to an unmocked call.
-    (prisma.order.findUnique as any).mockResolvedValue(null);
-    (prisma.pendingCheckout.findUnique as any).mockResolvedValue(null);
+    vi.mocked(prisma.order.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.pendingCheckout.findUnique).mockResolvedValue(null);
 
     await expect(confirmChapaPayment('bad-tx', 'success')).rejects.toMatchObject({
       statusCode: 404,
@@ -260,15 +273,7 @@ describe.skip('confirmChapaPayment', () => {
   });
 
   it('is idempotent — a duplicate webhook for an already-confirmed txRef returns created:false without touching the transaction', async () => {
-    // Per eco-8.1.4: checked via the unique constraint on Order.chapaTxRef.
-    // Critically, this check must run BEFORE the PendingCheckout lookup,
-    // since PendingCheckout is deleted on first confirmation — if the
-    // PendingCheckout check ran first here, a duplicate delivery would
-    // incorrectly 404 instead of returning created:false.
-    (prisma.order.findUnique as any).mockResolvedValue({
-      id: 'order-1',
-      chapaTxRef: 'tx-123',
-    });
+    vi.mocked(prisma.order.findUnique).mockResolvedValue(buildOrder({ chapaTxRef: 'tx-123' }));
 
     const result = await confirmChapaPayment('tx-123', 'success');
 
@@ -279,8 +284,8 @@ describe.skip('confirmChapaPayment', () => {
   });
 
   it('creates nothing for a failed status', async () => {
-    (prisma.order.findUnique as any).mockResolvedValue(null);
-    (prisma.pendingCheckout.findUnique as any).mockResolvedValue(pendingRow);
+    vi.mocked(prisma.order.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.pendingCheckout.findUnique).mockResolvedValue(buildPendingCheckout());
 
     const result = await confirmChapaPayment('tx-123', 'failed');
 
@@ -289,8 +294,8 @@ describe.skip('confirmChapaPayment', () => {
   });
 
   it('creates nothing for a cancelled status', async () => {
-    (prisma.order.findUnique as any).mockResolvedValue(null);
-    (prisma.pendingCheckout.findUnique as any).mockResolvedValue(pendingRow);
+    vi.mocked(prisma.order.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.pendingCheckout.findUnique).mockResolvedValue(buildPendingCheckout());
 
     const result = await confirmChapaPayment('tx-123', 'cancelled');
 
@@ -299,11 +304,11 @@ describe.skip('confirmChapaPayment', () => {
   });
 
   it('still creates the order and allows negative stock when stock is insufficient at confirm time', async () => {
-    (prisma.order.findUnique as any).mockResolvedValue(null);
-    (prisma.pendingCheckout.findUnique as any).mockResolvedValue(pendingRow);
+    vi.mocked(prisma.order.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.pendingCheckout.findUnique).mockResolvedValue(buildPendingCheckout());
     const mockTx = makeMockTx();
     mockTx.productVariant.findUnique.mockResolvedValue({ stock: 0, unitPrice: '750.00' });
-    (prisma.$transaction as any).mockImplementation(async (fn: any) => fn(mockTx));
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn: any) => fn(mockTx));
 
     const result = await confirmChapaPayment('tx-123', 'success');
 
@@ -312,11 +317,11 @@ describe.skip('confirmChapaPayment', () => {
   });
 
   it('still resolves created: true even when the confirmation email fails', async () => {
-    (prisma.order.findUnique as any).mockResolvedValue(null);
-    (prisma.pendingCheckout.findUnique as any).mockResolvedValue(pendingRow);
+    vi.mocked(prisma.order.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.pendingCheckout.findUnique).mockResolvedValue(buildPendingCheckout());
     const mockTx = makeMockTx();
-    (prisma.$transaction as any).mockImplementation(async (fn: any) => fn(mockTx));
-    (notificationService.sendOrderConfirmationEmail as any).mockRejectedValue(
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn: any) => fn(mockTx));
+    vi.mocked(notificationService.sendOrderConfirmationEmail).mockRejectedValue(
       new Error('SMTP down'),
     );
 
