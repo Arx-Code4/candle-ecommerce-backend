@@ -1,8 +1,11 @@
-import { prisma } from '../../src/config/db.js';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { Prisma } from '@prisma/client';
+import type { Product, ProductPhoto, ProductVariant } from '@prisma/client';
 import {
   getPublishedProducts,
   getPublishedProductById,
 } from '../../src/services/product.service.js';
+import { prisma } from '../../src/config/db.js';
 
 vi.mock('../../src/config/db.js', () => ({
   prisma: {
@@ -17,6 +20,44 @@ vi.mock('../../src/config/db.js', () => ({
 beforeEach(() => {
   vi.clearAllMocks();
 });
+
+// Mock builders reflect the ACTUAL schema.prisma shapes (Prisma's raw return
+// values), NOT the service's output shapes — the service maps between them.
+function buildProduct(overrides: Partial<Product> = {}) {
+  return {
+    id: 'p1',
+    name: 'Candle',
+    description: 'A test candle',
+    price: new Prisma.Decimal('19.99'),
+    isPublished: true,
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    updatedAt: new Date('2026-01-01T00:00:00Z'),
+    ...overrides,
+  };
+}
+
+function buildProductVariant(overrides: Partial<ProductVariant> = {}) {
+  return {
+    id: 'variant-1',
+    productId: 'p1',
+    scent: 'vanilla',
+    size: 'large',
+    stock: 5,
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    updatedAt: new Date('2026-01-01T00:00:00Z'),
+    ...overrides,
+  };
+}
+
+function buildProductPhoto(overrides: Partial<ProductPhoto> = {}) {
+  return {
+    id: 'photo-1',
+    productId: 'p1',
+    url: 'a.jpg',
+    sortOrder: 0,
+    ...overrides,
+  };
+}
 
 describe.skip('getPublishedProducts', () => {
   it('applies defaults and filters to published products only when no filters are given', async () => {
@@ -53,22 +94,22 @@ describe.skip('getPublishedProducts', () => {
   });
 
   it('returns the full variant list of a matching product, not just the matching variant', async () => {
-    vi.mocked(prisma.product.findMany).mockResolvedValue({
-      id: 'p1',
-      name: 'Candle',
-      description: 'A test candle',
-      price: 19.99,
-      isPublished: true,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      variants: [
-        { id: '1', scent: 'vanilla', size: 'large', stock: 5 },
-        { id: '2', scent: 'lavender', size: 'small', stock: 3 },
-        { id: '3', scent: 'rose', size: 'medium', stock: 1 },
-      ],
-    });
+    const mockProducts = [
+      {
+        ...buildProduct({ id: 'p1' }),
+        variants: [
+          buildProductVariant({ id: '1', scent: 'vanilla', size: 'large', stock: 5 }),
+          buildProductVariant({ id: '2', scent: 'lavender', size: 'small', stock: 3 }),
+          buildProductVariant({ id: '3', scent: 'rose', size: 'medium', stock: 1 }),
+        ],
+      },
+    ];
+
+    vi.mocked(prisma.product.findMany).mockResolvedValue(mockProducts);
     vi.mocked(prisma.product.count).mockResolvedValue(1);
 
+    // ProductSummary.variants only has {id, scent, size, stock} — the service
+    // is expected to project down from the full ProductVariant relation.
     const result = await getPublishedProducts({ scent: 'vanilla' });
 
     expect(result.items[0].variants).toHaveLength(3);
@@ -103,25 +144,29 @@ describe.skip('getPublishedProducts', () => {
     );
   });
 });
+
 describe.skip('getPublishedProductById', () => {
   it('resolves the full detail shape when the product exists and is published', async () => {
-    const product = {
-      id: 'p1',
-      name: 'Candle',
-      isPublished: true,
-      photos: ['a.jpg'],
-      variants: [],
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      description: '',
-      price: 10.99,
+    const mockProduct = {
+      ...buildProduct({ id: 'p1', name: 'Candle', isPublished: true }),
+      photos: [buildProductPhoto({ url: 'a.jpg' })],
+      variants: [buildProductVariant({ id: 'v1', scent: 'vanilla', size: 'large', stock: 5 })],
     };
-    vi.mocked(prisma.product.findFirst).mockResolvedValue(product);
+    vi.mocked(prisma.product.findFirst).mockResolvedValue(mockProduct);
 
     const result = await getPublishedProductById('p1');
 
-    expect(result).toEqual(product);
+    // ProductDetail's real declared shape: { id, name, variants, photos: string[] }.
+    // No description/price/isPublished/createdAt/updatedAt, and photos are
+    // plain URL strings, not the raw ProductPhoto relation objects.
+    expect(result).toEqual({
+      id: 'p1',
+      name: 'Candle',
+      variants: [{ id: 'v1', scent: 'vanilla', size: 'large', stock: 5 }],
+      photos: ['a.jpg'],
+    });
   });
+
   it('throws ApiError 404 "Product not found" when the product does not exist', async () => {
     vi.mocked(prisma.product.findFirst).mockResolvedValue(null);
 
@@ -132,18 +177,12 @@ describe.skip('getPublishedProductById', () => {
   });
 
   it('throws the identical ApiError 404 "Product not found" when the product exists but is not published', async () => {
-    const product = {
-      id: 'p1',
-      name: 'Candle',
-      isPublished: false,
-      photos: ['a.jpg'],
+    const mockProduct = {
+      ...buildProduct({ id: 'p1', isPublished: false }),
+      photos: [buildProductPhoto()],
       variants: [],
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      description: '',
-      price: 10.99,
     };
-    vi.mocked(prisma.product.findFirst).mockResolvedValue(product);
+    vi.mocked(prisma.product.findFirst).mockResolvedValue(mockProduct);
 
     await expect(getPublishedProductById('p1')).rejects.toMatchObject({
       statusCode: 404,
@@ -152,18 +191,12 @@ describe.skip('getPublishedProductById', () => {
   });
 
   it('resolves successfully with an empty variants array when the product has zero variants', async () => {
-    const product = {
-      id: 'p1',
-      name: 'Candle',
-      isPublished: true,
-      photos: ['a.jpg'],
+    const mockProduct = {
+      ...buildProduct({ id: 'p1', isPublished: true }),
+      photos: [buildProductPhoto()],
       variants: [],
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      description: '',
-      price: 10.99,
     };
-    vi.mocked(prisma.product.findFirst).mockResolvedValue(product);
+    vi.mocked(prisma.product.findFirst).mockResolvedValue(mockProduct);
 
     const result = await getPublishedProductById('p1');
 
