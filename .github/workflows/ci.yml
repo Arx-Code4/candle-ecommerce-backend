@@ -7,8 +7,15 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
-      JWT_SECRET: ci-test-secret-not-for-production
+      CHAPA_SECRET_KEY: ${{ secrets.CHAPA_SECRET_KEY }}
+      CHAPA_WEBHOOK_SECRET: ${{ secrets.CHAPA_WEBHOOK_SECRET }}
+      SMTP_HOST: ${{ secrets.SMTP_HOST }}
+      SMTP_PORT: ${{ secrets.SMTP_PORT }}
+      SMTP_USER: ${{ secrets.SMTP_USER }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      FRONTEND_ORDER_CONFIRMATION_URL: ${{ secrets.FRONTEND_ORDER_CONFIRMATION_URL }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
