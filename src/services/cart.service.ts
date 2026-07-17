@@ -1,4 +1,5 @@
 // Placeholder — not yet implemented.
+// Placeholder — not yet implemented. Full spec/tests land with the Cart module docs.
 
 export async function getOrCreateCart(userId: string): Promise<unknown> {
   throw new Error('Not implemented');
