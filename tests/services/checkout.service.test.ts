@@ -151,21 +151,34 @@ describe.skip('createChapaSession', () => {
   });
 
   it('throws ApiError(409) with unavailableItems when a cart line exceeds current stock', async () => {
-    // Note: available flag might be used for stock checking, adjust based on actual implementation
     const mockCart = buildCart({
       items: [
         buildCartItem({
           quantity: 10,
-          available: false, // or however stock is represented
+          name: 'Vanilla Candle',
+          size: 'M',
+          available: false,
         }),
       ],
     });
     vi.mocked(cartService.getOrCreateCart).mockResolvedValue(mockCart);
 
-    await expect(createChapaSession('user-1', shipping)).rejects.toMatchObject({
-      statusCode: 409,
-      message: 'Some items in your cart are no longer available in the requested quantity',
-    });
+    try {
+      await createChapaSession('user-1', shipping);
+    } catch (err) {
+      // Type assertion since we know it's an ApiError
+      const error = err as ApiError;
+      expect(error.statusCode).toBe(409);
+      expect(error.message).toBe(
+        'Some items in your cart are no longer available in the requested quantity',
+      );
+      expect(error.errors).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining('Vanilla Candle'),
+          expect.stringContaining('requested: 10'),
+        ]),
+      );
+    }
   });
 
   it('propagates a chapa.ts failure unchanged', async () => {
