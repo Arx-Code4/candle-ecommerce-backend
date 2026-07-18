@@ -151,10 +151,27 @@ describe.skip('registerUser', () => {
   });
 
   it('re-throws a raw P2002 error (concurrent registration) as ApiError(409)', async () => {
-    vi.mocked(prisma.user.create).mockRejectedValue(makeP2002Error());
+    const mockUser = buildUser();
+    // First call succeeds, second fails
+    vi.mocked(prisma.user.create)
+      .mockResolvedValueOnce(buildUser())
+      .mockRejectedValueOnce(makeP2002Error());
 
-    await expect(registerUser(baseInput)).rejects.toBeInstanceOf(ApiError);
-    await expect(registerUser(baseInput)).rejects.toMatchObject({ statusCode: 409 });
+    const [result1, result2] = await Promise.allSettled([
+      registerUser(baseInput), // baseInput has name, email, password
+      registerUser({ ...baseInput, email: 'same@email.com' }),
+    ]);
+
+    expect(result1.status).toBe('fulfilled');
+    expect(result2.status).toBe('rejected');
+
+    // Type guard to access reason safely
+    if (result2.status === 'rejected') {
+      expect(result2.reason).toMatchObject({
+        statusCode: 409,
+        message: 'Email already in use',
+      });
+    }
   });
 
   it('hashes the password before storing, never stores it plaintext', async () => {
@@ -316,6 +333,9 @@ describe.skip('resetPassword', () => {
     await resetPassword('good-token', 'newpassword123');
 
     expect(vi.mocked(prisma.$transaction)).toHaveBeenCalledTimes(1);
+
+    const transactionArgs = vi.mocked(prisma.$transaction).mock.calls[0][0];
+    expect(transactionArgs).toHaveLength(2);
   });
 
   it('throws ApiError(400, "Invalid reset link") when the token is not found', async () => {
