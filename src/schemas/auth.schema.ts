@@ -1,8 +1,31 @@
 import { z } from 'zod';
 
-// Placeholder — not yet implemented. Deliberately permissive/empty shape
-// so the import resolves; real validation shapes land per eco-8.1.2.
-export const registerSchema = z.object({ body: z.object({}) });
-export const loginSchema = z.object({ body: z.object({}) });
-export const forgotPasswordSchema = z.object({ body: z.object({}) });
-export const resetPasswordSchema = z.object({ body: z.object({}) });
+export const registerSchema = z.object({
+  body: z.object({
+    name: z.string().min(2),
+    email: z.string().email(),
+    password: z.string().min(8),
+    pendingVariantId: z.string().uuid().optional(),
+  }),
+});
+
+export const loginSchema = z.object({
+  body: z.object({
+    email: z.string().email(),
+    password: z.string().min(1),
+    pendingVariantId: z.string().uuid().optional(),
+  }),
+});
+
+export const forgotPasswordSchema = z.object({
+  body: z.object({
+    email: z.string().email(),
+  }),
+});
+
+export const resetPasswordSchema = z.object({
+  body: z.object({
+    token: z.string().min(1),
+    newPassword: z.string().min(8),
+  }),
+});
