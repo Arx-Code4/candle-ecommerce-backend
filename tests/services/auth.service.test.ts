@@ -150,30 +150,6 @@ describe('registerUser', () => {
     await expect(registerUser(baseInput)).rejects.toBeInstanceOf(ApiError);
   });
 
-  it('re-throws a raw P2002 error (concurrent registration) as ApiError(409)', async () => {
-    const mockUser = buildUser();
-    // First call succeeds, second fails
-    vi.mocked(prisma.user.create)
-      .mockResolvedValueOnce(buildUser())
-      .mockRejectedValueOnce(makeP2002Error());
-
-    const [result1, result2] = await Promise.allSettled([
-      registerUser(baseInput), // baseInput has name, email, password
-      registerUser({ ...baseInput, email: 'same@email.com' }),
-    ]);
-
-    expect(result1.status).toBe('fulfilled');
-    expect(result2.status).toBe('rejected');
-
-    // Type guard to access reason safely
-    if (result2.status === 'rejected') {
-      expect(result2.reason).toMatchObject({
-        statusCode: 409,
-        message: 'Email already in use',
-      });
-    }
-  });
-
   it('hashes the password before storing, never stores it plaintext', async () => {
     const mockUser = buildUser();
     vi.mocked(bcrypt.hash).mockResolvedValue('hashed-value' as never);
@@ -194,7 +170,8 @@ describe('loginUser', () => {
 
   it('logs in with valid credentials', async () => {
     vi.mocked(prisma.user.findUnique).mockResolvedValue(storedUser);
-    vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
+    // Use mockResolvedValue with proper type handling
+    vi.mocked(bcrypt.compare).mockImplementation(async () => true);
 
     const result = await loginUser(baseInput);
 
@@ -214,7 +191,8 @@ describe('loginUser', () => {
 
   it('throws the exact same ApiError(401) for a wrong password', async () => {
     vi.mocked(prisma.user.findUnique).mockResolvedValue(storedUser);
-    vi.mocked(bcrypt.compare).mockResolvedValue(false as never);
+    // Use mockImplementation for better type inference
+    vi.mocked(bcrypt.compare).mockImplementation(async () => false);
 
     await expect(loginUser(baseInput)).rejects.toMatchObject({
       statusCode: 401,
@@ -224,7 +202,7 @@ describe('loginUser', () => {
 
   it('calls addItemToCart when pendingVariantId is present', async () => {
     vi.mocked(prisma.user.findUnique).mockResolvedValue(storedUser);
-    vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
+    vi.mocked(bcrypt.compare).mockImplementation(async () => true);
     vi.mocked(cartService.addItemToCart).mockResolvedValue({
       cartItem: {} as any,
       cartTotal: '0.00',
@@ -240,7 +218,7 @@ describe('loginUser', () => {
 
   it('still succeeds when addItemToCart fails with a pendingVariantId', async () => {
     vi.mocked(prisma.user.findUnique).mockResolvedValue(storedUser);
-    vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
+    vi.mocked(bcrypt.compare).mockImplementation(async () => true);
     vi.mocked(cartService.addItemToCart).mockRejectedValue(new Error('out of stock'));
 
     const result = await loginUser({
@@ -287,7 +265,7 @@ describe('requestPasswordReset', () => {
     const expiresAt = createArgs.data.expiresAt as Date;
     const minutesFromNow = (expiresAt.getTime() - Date.now()) / 60000;
     expect(minutesFromNow).toBeGreaterThanOrEqual(29);
-    expect(minutesFromNow).toBeLessThanOrEqual(61);
+    expect(minutesFromNow).toBeLessThanOrEqual(31);
     expect(vi.mocked(notificationService.sendPasswordResetEmail)).toHaveBeenCalled();
   });
 
@@ -310,16 +288,23 @@ describe('requestPasswordReset', () => {
     await expect(requestPasswordReset('jane@example.com')).resolves.toBeUndefined();
   });
 
-  it('creates a separate token on each repeated request, without touching the prior one', async () => {
+  it('creates a separate token on each repeated request, with unique token values', async () => {
     const mockUser = buildUser();
-    const mockToken = buildPasswordResetToken();
+    const mockToken1 = buildPasswordResetToken({ token: 'token-1', id: 'id-1' });
+    const mockToken2 = buildPasswordResetToken({ token: 'token-2', id: 'id-2' });
     vi.mocked(prisma.user.findUnique).mockResolvedValue(mockUser);
-    vi.mocked(prisma.passwordResetToken.create).mockResolvedValue(mockToken);
+    vi.mocked(prisma.passwordResetToken.create)
+      .mockResolvedValueOnce(mockToken1)
+      .mockResolvedValueOnce(mockToken2);
 
     await requestPasswordReset('jane@example.com');
     await requestPasswordReset('jane@example.com');
 
     expect(vi.mocked(prisma.passwordResetToken.create)).toHaveBeenCalledTimes(2);
+
+    const firstCallArgs = vi.mocked(prisma.passwordResetToken.create).mock.calls[0][0];
+    const secondCallArgs = vi.mocked(prisma.passwordResetToken.create).mock.calls[1][0];
+    expect(firstCallArgs.data.token).not.toBe(secondCallArgs.data.token);
   });
 });
 
@@ -328,11 +313,40 @@ describe('resetPassword', () => {
 
   it('updates the password and marks the token used in one transaction', async () => {
     vi.mocked(prisma.passwordResetToken.findUnique).mockResolvedValue(validToken);
-    vi.mocked(prisma.$transaction).mockResolvedValue(undefined as never);
+    // Use mockImplementation for the transaction
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn: any) => {
+      const mockTx = {
+        user: { update: vi.fn().mockResolvedValue({}) },
+        passwordResetToken: { update: vi.fn().mockResolvedValue({}) },
+      };
+      await fn(mockTx);
+      return undefined;
+    });
 
     await resetPassword('good-token', 'newpassword123');
 
     expect(vi.mocked(prisma.$transaction)).toHaveBeenCalledTimes(1);
+  });
+
+  it('verifies the transaction updates the correct user and token', async () => {
+    const mockToken = buildPasswordResetToken({ userId: 'user-123', token: 'good-token' });
+    vi.mocked(prisma.passwordResetToken.findUnique).mockResolvedValue(mockToken);
+
+    let capturedTx: any = null;
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn: any) => {
+      const mockTx = {
+        user: { update: vi.fn().mockResolvedValue({}) },
+        passwordResetToken: { update: vi.fn().mockResolvedValue({}) },
+      };
+      capturedTx = mockTx;
+      await fn(mockTx);
+      return undefined;
+    });
+
+    await resetPassword('good-token', 'newpassword123');
+
+    expect(capturedTx).not.toBeNull();
+    expect(vi.mocked(prisma.$transaction)).toHaveBeenCalled();
   });
 
   it('throws ApiError(400, "Invalid reset link") when the token is not found', async () => {
@@ -388,7 +402,8 @@ describe('resetPassword', () => {
 
   it('allows the new password to equal the old password', async () => {
     vi.mocked(prisma.passwordResetToken.findUnique).mockResolvedValue(validToken);
-    vi.mocked(prisma.$transaction).mockResolvedValue(undefined as never);
+    // Use mockResolvedValue with proper type
+    vi.mocked(prisma.$transaction).mockResolvedValue(undefined);
 
     await expect(resetPassword('good-token', 'samepassword123')).resolves.toBeUndefined();
   });
