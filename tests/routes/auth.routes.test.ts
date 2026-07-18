@@ -26,7 +26,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe.skip('POST /auth/register', () => {
+describe('POST /auth/register', () => {
   it('applies rate limiting and validation before reaching the controller', async () => {
     const app = buildTestApp();
 
@@ -53,7 +53,7 @@ describe.skip('POST /auth/register', () => {
   });
 });
 
-describe.skip('POST /auth/login', () => {
+describe('POST /auth/login', () => {
   it('rejects a malformed email before reaching the controller', async () => {
     const app = buildTestApp();
 
@@ -78,7 +78,7 @@ describe.skip('POST /auth/login', () => {
   });
 });
 
-describe.skip('GET /auth/me', () => {
+describe('GET /auth/me', () => {
   it('requires auth — returns 401 and never invokes getMe without a token', async () => {
     const app = buildTestApp();
 
@@ -89,7 +89,7 @@ describe.skip('GET /auth/me', () => {
   });
 });
 
-describe.skip('POST /auth/forgot-password', () => {
+describe('POST /auth/forgot-password', () => {
   it("uses defaultLimiter rather than authLimiter — repeated valid requests within authLimiter's stricter threshold still succeed", async () => {
     const app = buildTestApp();
 
@@ -109,7 +109,7 @@ describe.skip('POST /auth/forgot-password', () => {
   });
 });
 
-describe.skip('POST /auth/reset-password', () => {
+describe('POST /auth/reset-password', () => {
   it('rejects a payload missing newPassword before reaching the controller', async () => {
     const app = buildTestApp();
 
