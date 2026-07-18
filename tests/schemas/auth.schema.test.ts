@@ -6,7 +6,7 @@ import {
   resetPasswordSchema,
 } from '../../src/schemas/auth.schema.js';
 
-describe.skip('registerSchema', () => {
+describe('registerSchema', () => {
   const validBase = {
     name: 'Jane Doe',
     email: 'jane@example.com',
@@ -55,7 +55,7 @@ describe.skip('registerSchema', () => {
   });
 });
 
-describe.skip('loginSchema', () => {
+describe('loginSchema', () => {
   it('accepts a valid payload', () => {
     const result = loginSchema.safeParse({
       body: { email: 'jane@example.com', password: 'password123' },
@@ -71,7 +71,7 @@ describe.skip('loginSchema', () => {
   });
 });
 
-describe.skip('forgotPasswordSchema', () => {
+describe('forgotPasswordSchema', () => {
   it('accepts a valid email', () => {
     const result = forgotPasswordSchema.safeParse({
       body: { email: 'jane@example.com' },
@@ -87,7 +87,7 @@ describe.skip('forgotPasswordSchema', () => {
   });
 });
 
-describe.skip('resetPasswordSchema', () => {
+describe('resetPasswordSchema', () => {
   it('accepts a valid payload with both fields', () => {
     const result = resetPasswordSchema.safeParse({
       body: { token: 'abc123', newPassword: 'newpassword123' },

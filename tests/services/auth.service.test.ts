@@ -85,7 +85,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe.skip('registerUser', () => {
+describe('registerUser', () => {
   const baseInput = { name: 'Jane Doe', email: 'jane@example.com', password: 'password123' };
 
   it('registers with no pendingVariantId', async () => {
@@ -171,7 +171,7 @@ describe.skip('registerUser', () => {
   });
 });
 
-describe.skip('loginUser', () => {
+describe('loginUser', () => {
   const baseInput = { email: 'jane@example.com', password: 'password123' };
   const storedUser = buildUser();
 
@@ -235,7 +235,7 @@ describe.skip('loginUser', () => {
   });
 });
 
-describe.skip('getUserById', () => {
+describe('getUserById', () => {
   it('returns the stripped user when found', async () => {
     const mockUser = buildUser();
     vi.mocked(prisma.user.findUnique).mockResolvedValue(mockUser);
@@ -255,7 +255,7 @@ describe.skip('getUserById', () => {
   });
 });
 
-describe.skip('requestPasswordReset', () => {
+describe('requestPasswordReset', () => {
   it('creates a token and sends the email when the email matches an account', async () => {
     const mockUser = buildUser();
     const mockToken = buildPasswordResetToken();
@@ -306,7 +306,7 @@ describe.skip('requestPasswordReset', () => {
   });
 });
 
-describe.skip('resetPassword', () => {
+describe('resetPassword', () => {
   const validToken = buildPasswordResetToken();
 
   it('updates the password and marks the token used in one transaction', async () => {
