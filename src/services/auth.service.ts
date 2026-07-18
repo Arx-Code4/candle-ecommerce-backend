@@ -139,14 +139,14 @@ export const resetPassword = async (token: string, newPassword: string): Promise
 
   const hashedPassword = await bcrypt.hash(newPassword, Number(env.BCRYPT_SALT_ROUNDS));
 
-  await prisma.$transaction(async (tx) => {
-    await tx.user.update({
+  await prisma.$transaction([
+    prisma.user.update({
       where: { id: resetToken.userId },
       data: { password: hashedPassword },
-    });
-    await tx.passwordResetToken.update({
+    }),
+    prisma.passwordResetToken.update({
       where: { id: resetToken.id },
       data: { usedAt: new Date() },
-    });
-  });
+    }),
+  ]);
 };
