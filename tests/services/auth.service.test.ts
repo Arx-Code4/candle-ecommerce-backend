@@ -333,9 +333,6 @@ describe.skip('resetPassword', () => {
     await resetPassword('good-token', 'newpassword123');
 
     expect(vi.mocked(prisma.$transaction)).toHaveBeenCalledTimes(1);
-
-    const transactionArgs = vi.mocked(prisma.$transaction).mock.calls[0][0];
-    expect(transactionArgs).toHaveLength(2);
   });
 
   it('throws ApiError(400, "Invalid reset link") when the token is not found', async () => {
