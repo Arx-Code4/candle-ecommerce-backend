@@ -3,13 +3,13 @@ import { AuthRequest } from '../types/index.js';
 import * as orderService from '../services/order.service.js';
 import { SuccessResponse } from '../utils/ApiResponse.js';
 import { HTTP_STATUS } from '../constants/index.js';
-import { validationResult, param } from 'express-validator';
+// import { validationResult, param } from 'express-validator';
 import AppError from '../utils/ApiError.js';
 
 // Validation rules
-export const validateGetOrderById = [
-  param('id').isMongoId().withMessage('Invalid order ID format'),
-];
+// export const validateGetOrderById = [
+//   param('id').isMongoId().withMessage('Invalid order ID format'),
+// ];
 
 export const listMyOrders = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
