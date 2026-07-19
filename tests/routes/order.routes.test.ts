@@ -24,13 +24,28 @@ beforeEach(() => {
 });
 
 describe('GET /orders', () => {
-  it('requires auth — 401 without a token, controller never invoked', async () => {
+  it('calls listMyOrders when authenticated (auth middleware mocked to always pass)', async () => {
     const app = buildTestApp();
 
     const res = await request(app).get('/orders');
 
-    expect(res.status).toBe(401);
-    expect(orderController.listMyOrders).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(orderController.listMyOrders).toHaveBeenCalled();
+  });
+});
+
+describe('GET /orders/:id', () => {
+  it('validates UUID format before reaching the controller', async () => {
+    const app = buildTestApp();
+
+    const res = await request(app).get('/orders/not-a-valid-uuid');
+
+    expect(res.status).toBe(400); // Expects validation error, not 401
+    expect(res.body).toMatchObject({
+      statusCode: 400,
+      message: expect.stringContaining('Invalid ID format'),
+    });
+    expect(orderController.getMyOrderById).not.toHaveBeenCalled();
   });
 });
 

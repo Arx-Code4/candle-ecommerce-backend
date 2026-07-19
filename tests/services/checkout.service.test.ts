@@ -29,6 +29,7 @@ vi.mock('../../src/services/cart.service.js', () => ({
 
 vi.mock('../../src/utils/chapa.js', () => ({
   initializeTransaction: vi.fn(),
+  verifyTransaction: vi.fn(),
 }));
 
 vi.mock('../../src/services/notification.service.js', () => ({
@@ -333,5 +334,32 @@ describe('confirmChapaPayment', () => {
     const result = await confirmChapaPayment('tx-123', 'success');
 
     expect(result).toEqual({ orderId: 'order-1', created: true });
+  });
+
+  it('throws ApiError(409) when the verified payment amount does not match the expected amount', async () => {
+    vi.mocked(prisma.order.findUnique).mockResolvedValue(null);
+    const pendingRow = buildPendingCheckout({
+      expectedAmount: new Prisma.Decimal('1500.00'),
+    });
+    vi.mocked(prisma.pendingCheckout.findUnique).mockResolvedValue(pendingRow);
+    vi.mocked(chapa.verifyTransaction).mockResolvedValue({
+      status: 'success',
+      amount: '1200.00', // Mismatch: expected 1500.00
+    });
+    // This should never be called - amount mismatch is checked first
+    vi.mocked(prisma.$transaction).mockImplementation(async () => {
+      throw new Error('Transaction should not be called');
+    });
+
+    await expect(confirmChapaPayment('tx-123', 'success')).rejects.toMatchObject({
+      statusCode: 409,
+      message: 'Payment amount mismatch - please contact support',
+      errors: expect.arrayContaining([
+        expect.stringContaining('Expected: 1500.00'),
+        expect.stringContaining('Paid: 1200.00'),
+      ]),
+    });
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });

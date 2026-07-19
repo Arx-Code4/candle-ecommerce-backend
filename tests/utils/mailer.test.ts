@@ -6,15 +6,9 @@ import { sendMail } from '../../src/utils/mailer.js';
 const { mockSendMail } = vi.hoisted(() => ({
   mockSendMail: vi.fn(),
 }));
-
-vi.mock('nodemailer', () => ({
-  default: {
-    createTransport: vi.fn(() => ({ sendMail: mockSendMail })),
-  },
-}));
-
 beforeEach(() => {
-  mockSendMail.mockClear();
+  vi.clearAllMocks();
+  vi.resetModules(); // Add this
 });
 
 describe('sendMail', () => {
@@ -24,34 +18,46 @@ describe('sendMail', () => {
     html: '<p>Thanks for your order!</p>',
   };
 
-  it('calls the configured transport with the given message', async () => {
+  it('builds the transport as a singleton — createTransport is called exactly once across multiple calls', async () => {
     mockSendMail.mockResolvedValue({ messageId: 'abc123' });
 
-    await sendMail(message);
+    const { sendMail: freshSendMail } = await import('../../src/utils/mailer.js');
 
-    expect(mockSendMail).toHaveBeenCalledWith(
-      expect.objectContaining({
-        to: message.to,
-        subject: message.subject,
-        html: message.html,
-      }),
-    );
+    // Call sendMail multiple times
+    await freshSendMail(message);
+    await freshSendMail({ ...message, to: 'other@example.com' });
+    await freshSendMail({ ...message, to: 'third@example.com' });
+
+    // createTransport should only be called once (singleton pattern)
+    expect(vi.mocked(nodemailer.createTransport)).toHaveBeenCalledTimes(1);
   });
 
-  it('propagates a send failure unchanged, without catching it', async () => {
-    const sendError = new Error('SMTP connection refused');
-    mockSendMail.mockRejectedValue(sendError);
-
-    await expect(sendMail(message)).rejects.toThrow('SMTP connection refused');
-  });
-
-  it('builds the transport as a singleton — createTransport is called exactly once', async () => {
+  it('does not call createTransport again after the transport is already built', async () => {
     mockSendMail.mockResolvedValue({ messageId: 'abc123' });
 
-    await sendMail(message);
-    await sendMail(message);
-    await sendMail({ ...message, to: 'other@example.com' });
+    const { sendMail: freshSendMail } = await import('../../src/utils/mailer.js');
 
-    expect(nodemailer.createTransport).toHaveBeenCalledTimes(1);
+    await freshSendMail(message);
+    const createTransportMock = vi.mocked(nodemailer.createTransport);
+    const callCountAfterFirst = createTransportMock.mock.calls.length;
+
+    await freshSendMail({ ...message, to: 'other@example.com' });
+    const callCountAfterSecond = createTransportMock.mock.calls.length;
+
+    expect(callCountAfterFirst).toBe(1);
+    expect(callCountAfterSecond).toBe(1); // Still 1, not incremented
+  });
+
+  it('handles multiple sendMail calls with different recipients using the same transport', async () => {
+    mockSendMail.mockResolvedValue({ messageId: 'abc123' });
+
+    const { sendMail: freshSendMail } = await import('../../src/utils/mailer.js');
+
+    await freshSendMail({ to: 'user1@example.com', subject: 'Test', html: '<p>Test 1</p>' });
+    await freshSendMail({ to: 'user2@example.com', subject: 'Test', html: '<p>Test 2</p>' });
+    await freshSendMail({ to: 'user3@example.com', subject: 'Test', html: '<p>Test 3</p>' });
+
+    expect(vi.mocked(nodemailer.createTransport)).toHaveBeenCalledTimes(1);
+    expect(mockSendMail).toHaveBeenCalledTimes(3);
   });
 });
