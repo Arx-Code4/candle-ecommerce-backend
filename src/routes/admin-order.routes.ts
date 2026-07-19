@@ -7,7 +7,7 @@ import {
   listAdminOrdersQuerySchema,
   updateOrderStatusSchema,
 } from '../schemas/admin-order.schema.js';
-import * as adminOrderController from '../controllers/admin-order.controller.js';
+import { listAllOrders, updateOrderStatus } from '../controllers/admin-order.controller.js';
 
 const router = Router();
 
@@ -16,7 +16,7 @@ router.get(
   authMiddleware,
   adminOnly,
   validate(listAdminOrdersQuerySchema),
-  asyncHandler(adminOrderController.listAllOrders),
+  asyncHandler(listAllOrders),
 );
 
 router.patch(
@@ -24,7 +24,7 @@ router.patch(
   authMiddleware,
   adminOnly,
   validate(updateOrderStatusSchema),
-  asyncHandler(adminOrderController.updateOrderStatus),
+  asyncHandler(updateOrderStatus),
 );
 
 export default router;
