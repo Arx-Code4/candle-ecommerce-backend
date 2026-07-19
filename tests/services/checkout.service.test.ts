@@ -44,6 +44,10 @@ const shipping = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(chapa.verifyTransaction).mockResolvedValue({
+    status: 'success',
+    amount: '1500.00',
+  });
 });
 
 // Factory functions for type-safe mock data

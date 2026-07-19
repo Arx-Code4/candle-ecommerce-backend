@@ -6,6 +6,11 @@ import { sendMail } from '../../src/utils/mailer.js';
 const { mockSendMail } = vi.hoisted(() => ({
   mockSendMail: vi.fn(),
 }));
+vi.mock('nodemailer', () => ({
+  default: {
+    createTransport: vi.fn(() => ({ sendMail: mockSendMail })),
+  },
+}));
 beforeEach(() => {
   vi.clearAllMocks();
   vi.resetModules(); // Add this
