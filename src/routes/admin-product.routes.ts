@@ -8,7 +8,12 @@ import {
   updateProductSchema,
   updateProductStatusSchema,
 } from '../schemas/admin-product.schema.js';
-import * as adminProductController from '../controllers/admin-product.controller.js';
+import {
+  createProduct,
+  listAllProducts,
+  updateProduct,
+  updateProductStatus,
+} from '../controllers/admin-product.controller.js';
 
 const router = Router();
 
@@ -17,17 +22,17 @@ router.post(
   authMiddleware,
   adminOnly,
   validate(createProductSchema),
-  asyncHandler(adminProductController.createProduct),
+  asyncHandler(createProduct),
 );
 
-router.get('/', authMiddleware, adminOnly, asyncHandler(adminProductController.listAllProducts));
+router.get('/', authMiddleware, adminOnly, asyncHandler(listAllProducts));
 
 router.patch(
   '/:id',
   authMiddleware,
   adminOnly,
   validate(updateProductSchema),
-  asyncHandler(adminProductController.updateProduct),
+  asyncHandler(updateProduct),
 );
 
 router.patch(
@@ -35,7 +40,7 @@ router.patch(
   authMiddleware,
   adminOnly,
   validate(updateProductStatusSchema),
-  asyncHandler(adminProductController.updateProductStatus),
+  asyncHandler(updateProductStatus),
 );
 
 export default router;
