@@ -54,16 +54,27 @@ function buildTestApp() {
   return app;
 }
 
-function makeAuthedRequest(app: express.Express) {
-  // FLAG (placeholder, not real auth): this fake bearer token only exercises
-  // whether authMiddleware is wired to run at all on this route — it does
-  // NOT validate real JWT signing/expiry logic. Once authMiddleware actually
-  // exists, these "authed" tests may need a real signed test JWT instead,
-  // depending on how strict the real middleware turns out to be (e.g. if it
-  // verifies signature/expiry rather than just checking header presence).
-  return request(app).set('Authorization', 'Bearer fake-valid-token');
+// FLAG (placeholder, not real auth): this fake bearer token only exercises
+// whether authMiddleware is wired to run at all on this route — it does
+// NOT validate real JWT signing/expiry logic. Once authMiddleware actually
+// exists, these "authed" tests may need a real signed test JWT instead,
+// depending on how strict the real middleware turns out to be (e.g. if it
+// verifies signature/expiry rather than just checking header presence).
+//
+// NOTE: signature is (app, method, path) rather than (app) because
+// supertest's `request(app)` doesn't expose `.set()` until a verb method
+// (`.post()`, `.get()`, etc.) has been called on it — `.set()` only exists
+// on the `Test` instance returned by that verb call, not on the bare
+// SuperTest agent. Building the verb call inside the helper (instead of
+// chaining it after the helper returns) lets us call `.set(...)` here,
+// where it's actually available.
+function makeAuthedRequest(
+  app: express.Express,
+  method: 'post' | 'get' | 'put' | 'patch' | 'delete',
+  path: string,
+) {
+  return request(app)[method](path).set('Authorization', 'Bearer fake-valid-token');
 }
-
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -85,7 +96,7 @@ describe.skip('POST /checkout', () => {
   it('validates the shipping body — rejected before the controller on an empty body', async () => {
     const app = buildTestApp();
 
-    const res = await makeAuthedRequest(app).post('/checkout').send({});
+    const res = await makeAuthedRequest(app, 'post', '/checkout').send({});
 
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({
@@ -110,7 +121,7 @@ describe.skip('POST /checkout', () => {
   it('reaches the controller with a valid auth header and body', async () => {
     const app = buildTestApp();
 
-    const res = await makeAuthedRequest(app).post('/checkout').send({
+    const res = await makeAuthedRequest(app, 'post', '/checkout').send({
       shippingName: 'Abebe',
       shippingPhone: '+251911223344',
       shippingAddress: 'Addis Ababa',

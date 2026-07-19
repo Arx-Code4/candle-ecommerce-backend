@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import { initiateCheckoutSchema } from '../../src/schemas/checkout.schema.js';
 
-describe.skip('initiateCheckoutSchema', () => {
+describe('initiateCheckoutSchema', () => {
   it('requires all three shipping fields', () => {
     const result = initiateCheckoutSchema.safeParse({
       body: { shippingName: 'Abebe' },

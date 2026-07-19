@@ -1,6 +1,12 @@
-// Placeholder — not yet implemented. Full spec in eco-9.1.3.
 import { Router } from 'express';
+import authMiddleware from '../middlewares/auth.middleware.js';
+import { listMyOrders, getMyOrderById } from '../controllers/order.controller.js';
 
 const router = Router();
+
+router.use(authMiddleware);
+
+router.get('/', listMyOrders);
+router.get('/:id', getMyOrderById);
 
 export default router;

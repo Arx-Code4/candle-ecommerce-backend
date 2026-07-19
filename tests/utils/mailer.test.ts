@@ -3,23 +3,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import nodemailer from 'nodemailer';
 import { sendMail } from '../../src/utils/mailer.js';
 
-// We need to reset modules to test singleton behavior properly
-// This is handled per-test with vi.resetModules()
-
-const mockSendMail = vi.fn();
+const { mockSendMail } = vi.hoisted(() => ({
+  mockSendMail: vi.fn(),
+}));
 
 vi.mock('nodemailer', () => ({
   default: {
-    createTransport: vi.fn(() => ({
-      sendMail: mockSendMail,
-    })),
+    createTransport: vi.fn(() => ({ sendMail: mockSendMail })),
   },
 }));
 
 beforeEach(() => {
-  vi.clearAllMocks();
-  // Reset module cache to ensure clean singleton state for each test
-  vi.resetModules();
+  mockSendMail.mockClear();
 });
 
 describe.skip('sendMail', () => {
