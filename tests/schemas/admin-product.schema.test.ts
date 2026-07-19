@@ -10,7 +10,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe.skip('admin-product.schema', () => {
+describe('admin-product.schema', () => {
   describe('createProductSchema', () => {
     it('accepts a valid full payload', () => {
       const input = {
