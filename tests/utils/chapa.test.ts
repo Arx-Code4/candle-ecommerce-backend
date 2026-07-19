@@ -23,7 +23,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe.skip('initializeTransaction', () => {
+describe('initializeTransaction', () => {
   const input = {
     amount: '500.00',
     email: 'jane@example.com',
@@ -74,7 +74,7 @@ describe.skip('initializeTransaction', () => {
   });
 });
 
-describe.skip('verifyTransaction', () => {
+describe('verifyTransaction', () => {
   const txRef = 'tx-123';
 
   it('resolves the status and amount on successful verification', async () => {
@@ -107,7 +107,7 @@ describe.skip('verifyTransaction', () => {
   });
 });
 
-describe.skip('verifyWebhookSignature', () => {
+describe('verifyWebhookSignature', () => {
   const rawBody = JSON.stringify({ event: 'charge.success', tx_ref: 'tx-123' });
 
   function computeValidSignature(): string {

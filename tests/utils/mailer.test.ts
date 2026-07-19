@@ -3,21 +3,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import nodemailer from 'nodemailer';
 import { sendMail } from '../../src/utils/mailer.js';
 
-const mockSendMail = vi.fn();
+const { mockSendMail } = vi.hoisted(() => ({
+  mockSendMail: vi.fn(),
+}));
 
 vi.mock('nodemailer', () => ({
   default: {
-    createTransport: vi.fn(() => ({
-      sendMail: mockSendMail,
-    })),
+    createTransport: vi.fn(() => ({ sendMail: mockSendMail })),
   },
 }));
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  mockSendMail.mockClear();
 });
 
-describe.skip('sendMail', () => {
+describe('sendMail', () => {
   const message = {
     to: 'jane@example.com',
     subject: 'Order Confirmation',

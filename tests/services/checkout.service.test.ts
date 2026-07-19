@@ -110,7 +110,7 @@ function buildOrder(overrides: Partial<Order> = {}): Order {
   };
 }
 
-describe.skip('createChapaSession', () => {
+describe('createChapaSession', () => {
   it('creates a session successfully for a cart with in-stock items', async () => {
     const mockCart = buildCart({
       items: [buildCartItem({ quantity: 2 })],
@@ -203,7 +203,7 @@ describe.skip('createChapaSession', () => {
   });
 });
 
-describe.skip('confirmChapaPayment', () => {
+describe('confirmChapaPayment', () => {
   function makeMockTx() {
     return {
       order: { create: vi.fn().mockResolvedValue({ id: 'order-1' }) },

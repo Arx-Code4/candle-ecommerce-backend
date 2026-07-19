@@ -1,9 +1,27 @@
-// Placeholder — not yet implemented. Full spec in eco-9.1.3.
+import nodemailer from 'nodemailer';
+import { env } from '../config/env.js';
 
-export async function sendMail(message: {
+const transporter = nodemailer.createTransport({
+  host: env.SMTP_HOST,
+  port: Number(env.SMTP_PORT),
+  secure: Number(env.SMTP_PORT) === 465,
+  auth: {
+    user: env.SMTP_USER,
+    pass: env.SMTP_PASSWORD,
+  },
+});
+
+interface SendMailInput {
   to: string;
   subject: string;
   html: string;
-}): Promise<unknown> {
-  throw new Error('Not implemented');
 }
+
+export const sendMail = async (input: SendMailInput): Promise<void> => {
+  await transporter.sendMail({
+    from: env.SMTP_USER,
+    to: input.to,
+    subject: input.subject,
+    html: input.html,
+  });
+};
