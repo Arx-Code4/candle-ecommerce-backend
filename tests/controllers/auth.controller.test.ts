@@ -34,7 +34,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe.skip('register', () => {
+describe('register', () => {
   it('delegates to authService.registerUser and responds 201', async () => {
     const body = { name: 'Jane Doe', email: 'jane@example.com', password: 'password123' };
     const serviceResult = { user: { id: 'u1' }, token: 'jwt', cartItemAdded: false };
@@ -58,7 +58,7 @@ describe.skip('register', () => {
   });
 });
 
-describe.skip('login', () => {
+describe('login', () => {
   it('delegates to authService.loginUser and responds 200', async () => {
     const body = { email: 'jane@example.com', password: 'password123' };
     const serviceResult = { user: { id: 'u1' }, token: 'jwt', cartItemAdded: false };
@@ -82,7 +82,7 @@ describe.skip('login', () => {
   });
 });
 
-describe.skip('getMe', () => {
+describe('getMe', () => {
   it('delegates to authService.getUserById with req.user.id, not req.body', async () => {
     const user = { id: 'u1', name: 'Jane Doe', email: 'jane@example.com', role: 'CUSTOMER' };
     (authService.getUserById as any).mockResolvedValue(user);
@@ -101,7 +101,7 @@ describe.skip('getMe', () => {
   });
 });
 
-describe.skip('forgotPassword', () => {
+describe('forgotPassword', () => {
   it('always responds with the fixed generic message, regardless of whether a match was found internally', async () => {
     (authService.requestPasswordReset as any).mockResolvedValue(undefined);
 
@@ -123,7 +123,7 @@ describe.skip('forgotPassword', () => {
   });
 });
 
-describe.skip('resetPassword', () => {
+describe('resetPassword', () => {
   it('delegates to authService.resetPassword with token and newPassword, in order', async () => {
     (authService.resetPassword as any).mockResolvedValue(undefined);
 
