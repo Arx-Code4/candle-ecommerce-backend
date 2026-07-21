@@ -128,6 +128,19 @@ export const confirmChapaPayment = async (
     throw new ApiError(HTTP_STATUS.NOT_FOUND, 'Unknown transaction reference');
   }
 
+  // NEW: verify the actually-paid amount against what we expected, before
+  // touching the DB transaction. Even a 0.01 mismatch is rejected — this
+  // guards against tampered/stale webhook payloads misreporting the amount.
+  const verification = await chapa.verifyTransaction(txRef);
+  const expected = pending.expectedAmount;
+  const paid = new Prisma.Decimal(verification.amount);
+  if (!paid.equals(expected)) {
+    throw new ApiError(HTTP_STATUS.CONFLICT, 'Payment amount mismatch - please contact support', [
+      `Expected: ${expected.toFixed(2)}`,
+      `Paid: ${paid.toFixed(2)}`,
+    ]);
+  }
+
   const cartSnapshot = pending.cartSnapshot as unknown as CartSnapshotItem[];
 
   const { order, items } = await prisma.$transaction(async (tx) => {
