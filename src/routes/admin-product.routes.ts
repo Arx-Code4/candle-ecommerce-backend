@@ -14,6 +14,8 @@ import {
   updateProduct,
   updateProductStatus,
 } from '../controllers/admin-product.controller.js';
+import productPhotosUpload from '../middlewares/upload.middleware.js';
+import attachProductPhotos from '../middlewares/cloudinaryupload.middleware.js';
 
 const router = Router();
 
@@ -21,6 +23,8 @@ router.post(
   '/',
   authMiddleware,
   adminOnly,
+  productPhotosUpload,
+  attachProductPhotos,
   validate(createProductSchema),
   asyncHandler(createProduct),
 );
@@ -31,6 +35,8 @@ router.patch(
   '/:id',
   authMiddleware,
   adminOnly,
+  productPhotosUpload,
+  attachProductPhotos,
   validate(updateProductSchema),
   asyncHandler(updateProduct),
 );
