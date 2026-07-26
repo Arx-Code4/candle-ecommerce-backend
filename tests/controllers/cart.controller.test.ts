@@ -28,7 +28,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe.skip('cart.controller', () => {
+describe('cart.controller', () => {
   it('getCart delegates to getOrCreateCart and responds 200', async () => {
     const cart = { items: [], total: '0.00' };
     (cartService.getOrCreateCart as any).mockResolvedValueOnce(cart);

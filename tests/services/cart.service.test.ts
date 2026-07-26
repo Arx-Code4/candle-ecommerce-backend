@@ -1,4 +1,3 @@
-// tests/services/cart.service.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Prisma } from '@prisma/client';
 import type { ProductVariant, CartItem, Cart } from '@prisma/client';
@@ -74,8 +73,7 @@ function buildCart(overrides: Partial<Cart> = {}): Cart {
   } as Cart;
 }
 
-// Extended mock types for relations
-type VariantWithProduct = ProductVariant & {
+type ProductVariantWithProduct = ProductVariant & {
   product: {
     isPublished: boolean;
     name: string;
@@ -83,7 +81,9 @@ type VariantWithProduct = ProductVariant & {
   };
 };
 
-function buildVariantWithProduct(overrides: Partial<VariantWithProduct> = {}): VariantWithProduct {
+function buildProductVariantWithProduct(
+  overrides: Partial<ProductVariantWithProduct> = {},
+): ProductVariantWithProduct {
   return {
     id: variantId,
     productId,
@@ -101,39 +101,39 @@ function buildVariantWithProduct(overrides: Partial<VariantWithProduct> = {}): V
   };
 }
 
-type CartItemWithVariant = CartItem & {
-  variant: VariantWithProduct;
+type CartItemWithProductVariant = CartItem & {
+  productVariant: ProductVariantWithProduct;
 };
 
-function buildCartItemWithVariant(
-  overrides: Partial<CartItemWithVariant> = {},
-): CartItemWithVariant {
+function buildCartItemWithProductVariant(
+  overrides: Partial<CartItemWithProductVariant> = {},
+): CartItemWithProductVariant {
   return {
     id: cartItemId,
     cartId,
     productVariantId: variantId,
     quantity: 2,
-    variant: buildVariantWithProduct(),
+    productVariant: buildProductVariantWithProduct(),
     ...overrides,
   };
 }
 
 type CartWithItems = Cart & {
-  items: CartItemWithVariant[];
+  items: CartItemWithProductVariant[];
 };
 
 function buildCartWithItems(overrides: Partial<CartWithItems> = {}): CartWithItems {
   return {
     id: cartId,
     userId,
-    items: [buildCartItemWithVariant()],
+    items: [buildCartItemWithProductVariant()],
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
   };
 }
 
-describe.skip('cart.service', () => {
+describe('cart.service', () => {
   describe('getOrCreateCart', () => {
     it('returns an existing cart with enriched items and a computed total', async () => {
       const mockCart = buildCartWithItems({
@@ -143,7 +143,7 @@ describe.skip('cart.service', () => {
             cartId,
             productVariantId: variantId,
             quantity: 2,
-            variant: buildVariantWithProduct({
+            productVariant: buildProductVariantWithProduct({
               stock: 10,
               product: { isPublished: true, name: 'Vanilla Candle', price: '10.00' },
             }),
@@ -185,7 +185,7 @@ describe.skip('cart.service', () => {
             cartId,
             productVariantId: variantId,
             quantity: 1,
-            variant: buildVariantWithProduct({
+            productVariant: buildProductVariantWithProduct({
               stock: 5,
               product: { isPublished: false, name: 'Old Candle', price: '8.00' },
             }),
@@ -208,7 +208,7 @@ describe.skip('cart.service', () => {
             cartId,
             productVariantId: variantId,
             quantity: 1,
-            variant: buildVariantWithProduct({
+            productVariant: buildProductVariantWithProduct({
               stock: 5,
               product: { isPublished: true, name: 'Vanilla Candle', price: '10.00' },
             }),
@@ -222,7 +222,7 @@ describe.skip('cart.service', () => {
             cartId,
             productVariantId: variantId,
             quantity: 1,
-            variant: buildVariantWithProduct({
+            productVariant: buildProductVariantWithProduct({
               stock: 5,
               product: { isPublished: true, name: 'Vanilla Candle', price: '20.00' },
             }),
@@ -239,7 +239,6 @@ describe.skip('cart.service', () => {
       expect(first.total).not.toBe(second.total);
     });
 
-    // NEW: Exact math test - single item calculation
     it('calculates exact total for a single item: 2 × 750.00 = 1500.00', async () => {
       const mockCart = buildCartWithItems({
         items: [
@@ -248,7 +247,7 @@ describe.skip('cart.service', () => {
             cartId,
             productVariantId: variantId,
             quantity: 2,
-            variant: buildVariantWithProduct({
+            productVariant: buildProductVariantWithProduct({
               stock: 10,
               product: { isPublished: true, name: 'Vanilla Candle', price: '750.00' },
             }),
@@ -262,7 +261,6 @@ describe.skip('cart.service', () => {
       expect(result.total).toBe('1500.00');
     });
 
-    // NEW: Exact math test - single item with different quantity
     it('calculates exact total for a single item: 3 × 500.00 = 1500.00', async () => {
       const mockCart = buildCartWithItems({
         items: [
@@ -271,7 +269,7 @@ describe.skip('cart.service', () => {
             cartId,
             productVariantId: variantId,
             quantity: 3,
-            variant: buildVariantWithProduct({
+            productVariant: buildProductVariantWithProduct({
               stock: 10,
               product: { isPublished: true, name: 'Lavender Candle', price: '500.00' },
             }),
@@ -285,7 +283,6 @@ describe.skip('cart.service', () => {
       expect(result.total).toBe('1500.00');
     });
 
-    // NEW: Exact math test - multiple items
     it('calculates exact total for multiple items: (2 × 750.00) + (1 × 500.00) = 2000.00', async () => {
       const mockCart = buildCartWithItems({
         items: [
@@ -294,7 +291,7 @@ describe.skip('cart.service', () => {
             cartId,
             productVariantId: 'v1',
             quantity: 2,
-            variant: buildVariantWithProduct({
+            productVariant: buildProductVariantWithProduct({
               stock: 10,
               product: { isPublished: true, name: 'Vanilla Candle', price: '750.00' },
             }),
@@ -304,7 +301,7 @@ describe.skip('cart.service', () => {
             cartId,
             productVariantId: 'v2',
             quantity: 1,
-            variant: buildVariantWithProduct({
+            productVariant: buildProductVariantWithProduct({
               stock: 5,
               product: { isPublished: true, name: 'Lavender Candle', price: '500.00' },
             }),
@@ -318,7 +315,6 @@ describe.skip('cart.service', () => {
       expect(result.total).toBe('2000.00');
     });
 
-    // NEW: Exact math test - three items
     it('calculates exact total for three items: (2 × 100.00) + (3 × 50.00) + (1 × 25.00) = 375.00', async () => {
       const mockCart = buildCartWithItems({
         items: [
@@ -327,7 +323,7 @@ describe.skip('cart.service', () => {
             cartId,
             productVariantId: 'v1',
             quantity: 2,
-            variant: buildVariantWithProduct({
+            productVariant: buildProductVariantWithProduct({
               stock: 10,
               product: { isPublished: true, name: 'Small Candle', price: '100.00' },
             }),
@@ -337,7 +333,7 @@ describe.skip('cart.service', () => {
             cartId,
             productVariantId: 'v2',
             quantity: 3,
-            variant: buildVariantWithProduct({
+            productVariant: buildProductVariantWithProduct({
               stock: 5,
               product: { isPublished: true, name: 'Medium Candle', price: '50.00' },
             }),
@@ -347,7 +343,7 @@ describe.skip('cart.service', () => {
             cartId,
             productVariantId: 'v3',
             quantity: 1,
-            variant: buildVariantWithProduct({
+            productVariant: buildProductVariantWithProduct({
               stock: 3,
               product: { isPublished: true, name: 'Large Candle', price: '25.00' },
             }),
@@ -361,7 +357,6 @@ describe.skip('cart.service', () => {
       expect(result.total).toBe('375.00');
     });
 
-    // NEW: Exact math test - decimal prices
     it('calculates exact total with decimal prices: (2 × 9.99) + (1 × 4.50) = 24.48', async () => {
       const mockCart = buildCartWithItems({
         items: [
@@ -370,7 +365,7 @@ describe.skip('cart.service', () => {
             cartId,
             productVariantId: 'v1',
             quantity: 2,
-            variant: buildVariantWithProduct({
+            productVariant: buildProductVariantWithProduct({
               stock: 10,
               product: { isPublished: true, name: 'Tea Light', price: '9.99' },
             }),
@@ -380,7 +375,7 @@ describe.skip('cart.service', () => {
             cartId,
             productVariantId: 'v2',
             quantity: 1,
-            variant: buildVariantWithProduct({
+            productVariant: buildProductVariantWithProduct({
               stock: 5,
               product: { isPublished: true, name: 'Wax Melt', price: '4.50' },
             }),
@@ -397,9 +392,16 @@ describe.skip('cart.service', () => {
 
   describe('addItemToCart', () => {
     it('adds a new item within stock', async () => {
-      const mockVariant = buildVariantWithProduct({ stock: 10 });
-      const mockCartItem = buildCartItemWithVariant({ quantity: 2, variant: mockVariant });
+      const mockVariant = buildProductVariantWithProduct({ stock: 10 });
+      const mockCartItem = buildCartItemWithProductVariant({
+        quantity: 2,
+        productVariant: mockVariant,
+      });
+      const mockCart = buildCartWithItems({ items: [] });
+
       vi.mocked(prisma.productVariant.findFirst).mockResolvedValueOnce(mockVariant);
+      // Use mockResolvedValue (persistent) so the second call inside addItemToCart also gets a cart
+      vi.mocked(prisma.cart.upsert).mockResolvedValue(mockCart);
       vi.mocked(prisma.cartItem.upsert).mockResolvedValueOnce(mockCartItem);
 
       const result = await addItemToCart(userId, variantId, 2);
@@ -409,9 +411,19 @@ describe.skip('cart.service', () => {
     });
 
     it('increments an existing item within stock', async () => {
-      const mockVariant = buildVariantWithProduct({ stock: 10 });
-      const mockCartItem = buildCartItemWithVariant({ quantity: 5, variant: mockVariant });
+      const mockVariant = buildProductVariantWithProduct({ stock: 10 });
+      const mockCartItem = buildCartItemWithProductVariant({
+        quantity: 5,
+        productVariant: mockVariant,
+      });
+      const existingCartItem = buildCartItemWithProductVariant({
+        quantity: 3,
+        productVariant: mockVariant,
+      });
+      const mockCart = buildCartWithItems({ items: [existingCartItem] });
+
       vi.mocked(prisma.productVariant.findFirst).mockResolvedValueOnce(mockVariant);
+      vi.mocked(prisma.cart.upsert).mockResolvedValue(mockCart);
       vi.mocked(prisma.cartItem.upsert).mockResolvedValueOnce(mockCartItem);
 
       const result = await addItemToCart(userId, variantId, 2);
@@ -421,9 +433,19 @@ describe.skip('cart.service', () => {
     });
 
     it('caps quantity to stock instead of erroring when requested quantity exceeds stock', async () => {
-      const mockVariant = buildVariantWithProduct({ stock: 5 });
-      const mockCartItem = buildCartItemWithVariant({ quantity: 5, variant: mockVariant });
+      const mockVariant = buildProductVariantWithProduct({ stock: 5 });
+      const mockCartItem = buildCartItemWithProductVariant({
+        quantity: 5,
+        productVariant: mockVariant,
+      });
+      const existingCartItem = buildCartItemWithProductVariant({
+        quantity: 3,
+        productVariant: mockVariant,
+      });
+      const mockCart = buildCartWithItems({ items: [existingCartItem] });
+
       vi.mocked(prisma.productVariant.findFirst).mockResolvedValueOnce(mockVariant);
+      vi.mocked(prisma.cart.upsert).mockResolvedValue(mockCart);
       vi.mocked(prisma.cartItem.upsert).mockResolvedValueOnce(mockCartItem);
 
       const result = await addItemToCart(userId, variantId, 4);
@@ -434,9 +456,19 @@ describe.skip('cart.service', () => {
     });
 
     it('caps at the stock ceiling when the existing quantity already equals stock', async () => {
-      const mockVariant = buildVariantWithProduct({ stock: 5 });
-      const mockCartItem = buildCartItemWithVariant({ quantity: 5, variant: mockVariant });
+      const mockVariant = buildProductVariantWithProduct({ stock: 5 });
+      const mockCartItem = buildCartItemWithProductVariant({
+        quantity: 5,
+        productVariant: mockVariant,
+      });
+      const existingCartItem = buildCartItemWithProductVariant({
+        quantity: 5,
+        productVariant: mockVariant,
+      });
+      const mockCart = buildCartWithItems({ items: [existingCartItem] });
+
       vi.mocked(prisma.productVariant.findFirst).mockResolvedValueOnce(mockVariant);
+      vi.mocked(prisma.cart.upsert).mockResolvedValue(mockCart);
       vi.mocked(prisma.cartItem.upsert).mockResolvedValueOnce(mockCartItem);
 
       const result = await addItemToCart(userId, variantId, 3);
@@ -447,9 +479,15 @@ describe.skip('cart.service', () => {
     });
 
     it('defaults quantity to 1 when omitted', async () => {
-      const mockVariant = buildVariantWithProduct({ stock: 10 });
-      const mockCartItem = buildCartItemWithVariant({ quantity: 1, variant: mockVariant });
+      const mockVariant = buildProductVariantWithProduct({ stock: 10 });
+      const mockCartItem = buildCartItemWithProductVariant({
+        quantity: 1,
+        productVariant: mockVariant,
+      });
+      const mockCart = buildCartWithItems({ items: [] });
+
       vi.mocked(prisma.productVariant.findFirst).mockResolvedValueOnce(mockVariant);
+      vi.mocked(prisma.cart.upsert).mockResolvedValue(mockCart);
       vi.mocked(prisma.cartItem.upsert).mockResolvedValueOnce(mockCartItem);
 
       const result = await addItemToCart(userId, variantId);
@@ -467,7 +505,7 @@ describe.skip('cart.service', () => {
     });
 
     it('throws 409 when stock is exactly zero', async () => {
-      const mockVariant = buildVariantWithProduct({ stock: 0 });
+      const mockVariant = buildProductVariantWithProduct({ stock: 0 });
       vi.mocked(prisma.productVariant.findFirst).mockResolvedValueOnce(mockVariant);
 
       await expect(addItemToCart(userId, variantId, 1)).rejects.toMatchObject({
@@ -477,9 +515,15 @@ describe.skip('cart.service', () => {
     });
 
     it('uses atomic stock check to prevent race conditions', async () => {
-      const mockVariant = buildVariantWithProduct({ stock: 5 });
-      const mockCartItem = buildCartItemWithVariant({ quantity: 1, variant: mockVariant });
+      const mockVariant = buildProductVariantWithProduct({ stock: 5 });
+      const mockCartItem = buildCartItemWithProductVariant({
+        quantity: 1,
+        productVariant: mockVariant,
+      });
+      const mockCart = buildCartWithItems({ items: [] });
+
       vi.mocked(prisma.productVariant.findFirst).mockResolvedValueOnce(mockVariant);
+      vi.mocked(prisma.cart.upsert).mockResolvedValue(mockCart);
       vi.mocked(prisma.cartItem.upsert).mockResolvedValueOnce(mockCartItem);
 
       await addItemToCart(userId, variantId, 1);
@@ -491,13 +535,16 @@ describe.skip('cart.service', () => {
 
   describe('updateCartItemQuantity', () => {
     it('updates to the exact requested quantity within stock', async () => {
-      const mockCartItem = buildCartItemWithVariant({
+      const mockCartItem = buildCartItemWithProductVariant({
         id: cartItemId,
         quantity: 4,
-        variant: buildVariantWithProduct({ stock: 10 }),
+        productVariant: buildProductVariantWithProduct({ stock: 10 }),
       });
+      const mockCart = buildCartWithItems({ items: [mockCartItem] });
+
       vi.mocked(prisma.cartItem.findFirst).mockResolvedValueOnce(mockCartItem);
       vi.mocked(prisma.cartItem.update).mockResolvedValueOnce({ ...mockCartItem, quantity: 4 });
+      vi.mocked(prisma.cart.upsert).mockResolvedValueOnce(mockCart);
 
       const result = await updateCartItemQuantity(userId, cartItemId, 4);
 
@@ -506,13 +553,16 @@ describe.skip('cart.service', () => {
     });
 
     it('caps quantity to stock when requested quantity exceeds stock', async () => {
-      const mockCartItem = buildCartItemWithVariant({
+      const mockCartItem = buildCartItemWithProductVariant({
         id: cartItemId,
         quantity: 3,
-        variant: buildVariantWithProduct({ stock: 3 }),
+        productVariant: buildProductVariantWithProduct({ stock: 3 }),
       });
+      const mockCart = buildCartWithItems({ items: [mockCartItem] });
+
       vi.mocked(prisma.cartItem.findFirst).mockResolvedValueOnce(mockCartItem);
       vi.mocked(prisma.cartItem.update).mockResolvedValueOnce({ ...mockCartItem, quantity: 3 });
+      vi.mocked(prisma.cart.upsert).mockResolvedValueOnce(mockCart);
 
       const result = await updateCartItemQuantity(userId, cartItemId, 7);
 
@@ -522,13 +572,16 @@ describe.skip('cart.service', () => {
     });
 
     it('accepts a requested quantity exactly equal to stock without capping', async () => {
-      const mockCartItem = buildCartItemWithVariant({
+      const mockCartItem = buildCartItemWithProductVariant({
         id: cartItemId,
         quantity: 5,
-        variant: buildVariantWithProduct({ stock: 5 }),
+        productVariant: buildProductVariantWithProduct({ stock: 5 }),
       });
+      const mockCart = buildCartWithItems({ items: [mockCartItem] });
+
       vi.mocked(prisma.cartItem.findFirst).mockResolvedValueOnce(mockCartItem);
       vi.mocked(prisma.cartItem.update).mockResolvedValueOnce({ ...mockCartItem, quantity: 5 });
+      vi.mocked(prisma.cart.upsert).mockResolvedValueOnce(mockCart);
 
       const result = await updateCartItemQuantity(userId, cartItemId, 5);
 
@@ -565,7 +618,10 @@ describe.skip('cart.service', () => {
   describe('removeCartItem', () => {
     it('removes an existing owned item', async () => {
       const mockCartItem = buildCartItem({ id: cartItemId });
+      const mockCart = buildCartWithItems({ items: [] });
+
       vi.mocked(prisma.cartItem.delete).mockResolvedValueOnce(mockCartItem);
+      vi.mocked(prisma.cart.upsert).mockResolvedValueOnce(mockCart);
 
       const result = await removeCartItem(userId, cartItemId);
 
@@ -574,7 +630,10 @@ describe.skip('cart.service', () => {
 
     it('leaves the cart row intact when removing the last item', async () => {
       const mockCartItem = buildCartItem({ id: cartItemId });
+      const mockCart = buildCartWithItems({ items: [] });
+
       vi.mocked(prisma.cartItem.delete).mockResolvedValueOnce(mockCartItem);
+      vi.mocked(prisma.cart.upsert).mockResolvedValueOnce(mockCart);
 
       const result = await removeCartItem(userId, cartItemId);
 
