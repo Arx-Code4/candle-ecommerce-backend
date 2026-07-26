@@ -1,4 +1,3 @@
-// tests/services/admin-product.service.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Prisma } from '@prisma/client';
 import type { Product } from '@prisma/client';
@@ -8,11 +7,15 @@ import {
   updateProduct,
   setProductPublishStatus,
   ProductDetail,
-  ProductPhoto,
-  ProductVariant,
+  ProductPhotoDetail,
+  ProductVariantDetail,
 } from '../../src/services/admin-product.service.js';
 import { prisma } from '../../src/config/db.js';
 import ApiError from '../../src/utils/ApiError.js';
+
+// Alias types for readability (they are the same as the service exports)
+type ProductPhoto = ProductPhotoDetail;
+type ProductVariant = ProductVariantDetail;
 
 vi.mock('../../src/config/db.js', () => ({
   prisma: {
@@ -22,6 +25,9 @@ vi.mock('../../src/config/db.js', () => ({
       count: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
+    },
+    orderItem: {
+      count: vi.fn(),
     },
   },
 }));
@@ -35,10 +41,21 @@ function makeP2025Error(): Prisma.PrismaClientKnownRequestError {
   });
 }
 
-// Factory functions for type-safe mock data
+// ---------- Factory functions for type-safe mock data ----------
 
-// Build a Prisma Product (for DB mocks)
-function buildPrismaProduct(overrides: Partial<Product> = {}): Product {
+// Build a full Prisma Product with relations (because the service uses include)
+function buildPrismaProductWithRelations(
+  overrides: Partial<Product> & {
+    photos?: ProductPhoto[];
+    variants?: ProductVariant[];
+  } = {},
+): Product & { photos: ProductPhoto[]; variants: ProductVariant[] } {
+  const defaultPhotos: ProductPhoto[] = [
+    { id: 'photo-1', url: 'https://example.com/photo.jpg', sortOrder: 0 },
+  ];
+  const defaultVariants: ProductVariant[] = [
+    { id: 'variant-1', scent: 'Vanilla', size: 'Large', stock: 10 },
+  ];
   return {
     id: 'product-1',
     name: 'Vanilla Bliss',
@@ -47,11 +64,13 @@ function buildPrismaProduct(overrides: Partial<Product> = {}): Product {
     isPublished: false,
     createdAt: new Date(),
     updatedAt: new Date(),
+    photos: overrides.photos ?? defaultPhotos,
+    variants: overrides.variants ?? defaultVariants,
     ...overrides,
   };
 }
 
-// Build ProductDetail (for service return values)
+// Build ProductDetail (service return type)
 function buildProductDetail(overrides: Partial<ProductDetail> = {}): ProductDetail {
   return {
     id: 'product-1',
@@ -65,36 +84,15 @@ function buildProductDetail(overrides: Partial<ProductDetail> = {}): ProductDeta
   };
 }
 
-// Build ProductPhoto
-function buildProductPhoto(overrides: Partial<ProductPhoto> = {}): ProductPhoto {
-  return {
-    id: 'photo-1',
-    url: 'https://example.com/photo.jpg',
-    sortOrder: 0,
-    ...overrides,
-  };
-}
-
-// Build ProductVariant
-function buildProductVariant(overrides: Partial<ProductVariant> = {}): ProductVariant {
-  return {
-    id: 'variant-1',
-    scent: 'Vanilla',
-    size: 'Large',
-    stock: 10,
-    ...overrides,
-  };
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe.skip('admin-product.service', () => {
+describe('admin-product.service', () => {
   describe('createProduct', () => {
     it('creates product with photos and variants in one write', async () => {
       const productDetail = buildProductDetail();
-      const prismaProduct = buildPrismaProduct();
+      const prismaProduct = buildPrismaProductWithRelations();
       vi.mocked(prisma.product.create).mockResolvedValue(prismaProduct);
 
       const result = await createProduct({
@@ -110,7 +108,7 @@ describe.skip('admin-product.service', () => {
     });
 
     it('sortOrder omitted defaults to array index', async () => {
-      vi.mocked(prisma.product.create).mockResolvedValue(buildPrismaProduct());
+      vi.mocked(prisma.product.create).mockResolvedValue(buildPrismaProductWithRelations());
 
       await createProduct({
         name: 'Vanilla Bliss',
@@ -121,7 +119,6 @@ describe.skip('admin-product.service', () => {
       });
 
       const callArgs = vi.mocked(prisma.product.create).mock.calls[0][0];
-      // Use type assertion to access the create array
       const photoCreates = callArgs.data.photos?.create as any[];
       expect(photoCreates[0].sortOrder).toBe(0);
       expect(photoCreates[1].sortOrder).toBe(1);
@@ -166,7 +163,7 @@ describe.skip('admin-product.service', () => {
     });
 
     it('preserves original casing/whitespace on write', async () => {
-      vi.mocked(prisma.product.create).mockResolvedValue(buildPrismaProduct());
+      vi.mocked(prisma.product.create).mockResolvedValue(buildPrismaProductWithRelations());
 
       await createProduct({
         name: 'Vanilla Bliss',
@@ -200,8 +197,8 @@ describe.skip('admin-product.service', () => {
   describe('getAllProducts', () => {
     it('returns both published and unpublished products', async () => {
       const mockPrismaProducts = [
-        buildPrismaProduct({ isPublished: true }),
-        buildPrismaProduct({ id: 'product-2', isPublished: false }),
+        buildPrismaProductWithRelations({ isPublished: true }),
+        buildPrismaProductWithRelations({ id: 'product-2', isPublished: false }),
       ];
       vi.mocked(prisma.product.findMany).mockResolvedValue(mockPrismaProducts);
       vi.mocked(prisma.product.count).mockResolvedValue(2);
@@ -246,8 +243,8 @@ describe.skip('admin-product.service', () => {
 
   describe('updateProduct', () => {
     it('updates only the name when only name is provided', async () => {
-      const prismaProduct = buildPrismaProduct();
-      const updatedPrismaProduct = buildPrismaProduct({ name: 'New Name' });
+      const prismaProduct = buildPrismaProductWithRelations();
+      const updatedPrismaProduct = buildPrismaProductWithRelations({ name: 'New Name' });
       vi.mocked(prisma.product.findUnique).mockResolvedValue(prismaProduct);
       vi.mocked(prisma.product.update).mockResolvedValue(updatedPrismaProduct);
 
@@ -258,9 +255,9 @@ describe.skip('admin-product.service', () => {
     });
 
     it('fully replaces photos when a photos array is sent', async () => {
-      const prismaProduct = buildPrismaProduct();
+      const prismaProduct = buildPrismaProductWithRelations();
       vi.mocked(prisma.product.findUnique).mockResolvedValue(prismaProduct);
-      vi.mocked(prisma.product.update).mockResolvedValue(buildPrismaProduct());
+      vi.mocked(prisma.product.update).mockResolvedValue(buildPrismaProductWithRelations());
 
       await updateProduct('product-1', { photos: [{ url: 'd' }, { url: 'e' }] });
 
@@ -278,7 +275,7 @@ describe.skip('admin-product.service', () => {
     });
 
     it('rejects a duplicate scent/size combination in submitted variants', async () => {
-      vi.mocked(prisma.product.findUnique).mockResolvedValue(buildPrismaProduct());
+      vi.mocked(prisma.product.findUnique).mockResolvedValue(buildPrismaProductWithRelations());
 
       await expect(
         updateProduct('product-1', {
@@ -296,30 +293,31 @@ describe.skip('admin-product.service', () => {
     });
 
     it('rejects removing a variant that has existing order items', async () => {
-      // Since we don't have the orderItem mock, we test that the service
-      // should reject removing a variant with existing orders
-      // This will be properly tested once the service is implemented
-      vi.mocked(prisma.product.findUnique).mockResolvedValue(
-        buildPrismaProduct({
-          id: 'product-1',
-        }),
-      );
+      // Provide a product with at least one variant
+      const existingProduct = buildPrismaProductWithRelations({
+        variants: [{ id: 'variant-1', scent: 'Vanilla', size: 'Large', stock: 10 }],
+      });
+      vi.mocked(prisma.product.findUnique).mockResolvedValue(existingProduct);
 
-      // The actual test would mock orderItem.count returning > 0
-      // For now, we test the validation logic expectation
-      await expect(
-        updateProduct('product-1', {
-          variants: [],
-        }),
-      ).rejects.toMatchObject({
+      // Mock orderItem.count to return >0
+      vi.mocked(prisma.orderItem.count).mockResolvedValue(1);
+
+      await expect(updateProduct('product-1', { variants: [] })).rejects.toMatchObject({
         statusCode: 409,
         message: 'Cannot remove a variant with existing orders',
       });
     });
 
     it('allows removing a variant with no existing orders', async () => {
-      vi.mocked(prisma.product.findUnique).mockResolvedValue(buildPrismaProduct());
-      const updatedPrismaProduct = buildPrismaProduct();
+      const existingProduct = buildPrismaProductWithRelations({
+        variants: [{ id: 'variant-1', scent: 'Vanilla', size: 'Large', stock: 10 }],
+      });
+      vi.mocked(prisma.product.findUnique).mockResolvedValue(existingProduct);
+      vi.mocked(prisma.orderItem.count).mockResolvedValue(0);
+
+      const updatedPrismaProduct = buildPrismaProductWithRelations({
+        variants: [],
+      });
       vi.mocked(prisma.product.update).mockResolvedValue(updatedPrismaProduct);
 
       const result = await updateProduct('product-1', { variants: [] });
@@ -328,8 +326,15 @@ describe.skip('admin-product.service', () => {
     });
 
     it('updates variants with matching ids in place instead of recreating them', async () => {
-      vi.mocked(prisma.product.findUnique).mockResolvedValue(buildPrismaProduct());
-      vi.mocked(prisma.product.update).mockResolvedValue(buildPrismaProduct());
+      const existingProduct = buildPrismaProductWithRelations({
+        variants: [{ id: 'variant-1', scent: 'Vanilla', size: 'Large', stock: 10 }],
+      });
+      vi.mocked(prisma.product.findUnique).mockResolvedValue(existingProduct);
+
+      const updatedPrismaProduct = buildPrismaProductWithRelations({
+        variants: [{ id: 'variant-1', scent: 'Vanilla', size: 'Large', stock: 99 }],
+      });
+      vi.mocked(prisma.product.update).mockResolvedValue(updatedPrismaProduct);
 
       await updateProduct('product-1', {
         variants: [{ id: 'variant-1', scent: 'Vanilla', size: 'Large', stock: 99 }],
@@ -341,7 +346,7 @@ describe.skip('admin-product.service', () => {
     });
 
     it('throws ApiError(409) when duplicate variant is detected', async () => {
-      vi.mocked(prisma.product.findUnique).mockResolvedValue(buildPrismaProduct());
+      vi.mocked(prisma.product.findUnique).mockResolvedValue(buildPrismaProductWithRelations());
 
       await expect(
         updateProduct('product-1', {
@@ -356,7 +361,7 @@ describe.skip('admin-product.service', () => {
 
   describe('setProductPublishStatus', () => {
     it('publishes an unpublished product', async () => {
-      const prismaProduct = buildPrismaProduct({ isPublished: true });
+      const prismaProduct = buildPrismaProductWithRelations({ isPublished: true });
       vi.mocked(prisma.product.update).mockResolvedValue(prismaProduct);
 
       const result = await setProductPublishStatus('product-1', true);
@@ -365,7 +370,7 @@ describe.skip('admin-product.service', () => {
     });
 
     it('unpublishes (soft-deletes) a product', async () => {
-      const prismaProduct = buildPrismaProduct({ isPublished: false });
+      const prismaProduct = buildPrismaProductWithRelations({ isPublished: false });
       vi.mocked(prisma.product.update).mockResolvedValue(prismaProduct);
 
       const result = await setProductPublishStatus('product-1', false);
@@ -383,7 +388,7 @@ describe.skip('admin-product.service', () => {
     });
 
     it('is idempotent when setting the same value again', async () => {
-      const prismaProduct = buildPrismaProduct({ isPublished: true });
+      const prismaProduct = buildPrismaProductWithRelations({ isPublished: true });
       vi.mocked(prisma.product.update).mockResolvedValue(prismaProduct);
 
       await expect(setProductPublishStatus('product-1', true)).resolves.toEqual({

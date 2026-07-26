@@ -3,7 +3,7 @@ import adminOnly from '../../src/middlewares/adminOnly.middleware.js';
 import { AuthRequest } from '../../src/types/index.js';
 import ApiError from '../../src/utils/ApiError.js';
 
-describe.skip('adminOnly.middleware', () => {
+describe('adminOnly.middleware', () => {
   let res: Response;
   let next: NextFunction;
 

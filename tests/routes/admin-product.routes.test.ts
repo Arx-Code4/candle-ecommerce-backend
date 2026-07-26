@@ -31,7 +31,7 @@ const buildApp = (): Express => {
   return app;
 };
 
-describe.skip('admin-product.routes', () => {
+describe('admin-product.routes', () => {
   let app: Express;
 
   beforeEach(() => {

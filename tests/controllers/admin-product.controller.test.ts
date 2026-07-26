@@ -62,7 +62,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe.skip('admin-product.controller', () => {
+describe('admin-product.controller', () => {
   let res: Response;
   let next: NextFunction;
 

@@ -29,7 +29,7 @@ const buildApp = (): Express => {
   return app;
 };
 
-describe.skip('admin-order.routes', () => {
+describe('admin-order.routes', () => {
   let app: Express;
 
   beforeEach(() => {

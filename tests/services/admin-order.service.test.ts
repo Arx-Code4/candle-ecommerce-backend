@@ -70,7 +70,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe.skip('admin-order.service', () => {
+describe('admin-order.service', () => {
   describe('getAllOrders', () => {
     it('returns all orders across all customers', async () => {
       const mockOrders = [buildPrismaOrder({ id: 'order-1' }), buildPrismaOrder({ id: 'order-2' })];

@@ -3,7 +3,7 @@ import {
   updateOrderStatusSchema,
 } from '../../src/schemas/admin-order.schema.js';
 
-describe.skip('admin-order.schema', () => {
+describe('admin-order.schema', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
