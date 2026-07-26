@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { Prisma } from '@prisma/client';
 import { toPriceString } from '../../src/utils/price.js';
 
-describe.skip('toPriceString', () => {
+describe('toPriceString', () => {
   it('converts a Prisma Decimal to a 2-decimal string', () => {
     const decimal = new Prisma.Decimal('19.99');
     expect(toPriceString(decimal)).toBe('19.99');
