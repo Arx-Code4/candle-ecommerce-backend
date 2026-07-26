@@ -59,7 +59,7 @@ function buildProductPhoto(overrides: Partial<ProductPhoto> = {}) {
   };
 }
 
-describe.skip('getPublishedProducts', () => {
+describe('getPublishedProducts', () => {
   it('applies defaults and filters to published products only when no filters are given', async () => {
     vi.mocked(prisma.product.findMany).mockResolvedValue([]);
     vi.mocked(prisma.product.count).mockResolvedValue(0);
@@ -145,7 +145,7 @@ describe.skip('getPublishedProducts', () => {
   });
 });
 
-describe.skip('getPublishedProductById', () => {
+describe('getPublishedProductById', () => {
   it('resolves the full detail shape when the product exists and is published', async () => {
     const mockProduct = {
       ...buildProduct({ id: 'p1', name: 'Candle', isPublished: true }),
