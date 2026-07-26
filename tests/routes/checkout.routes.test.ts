@@ -7,14 +7,27 @@ import errorMiddleware from '../../src/middlewares/error.middleware.js';
 import * as checkoutController from '../../src/controllers/checkout.controller.js';
 import ApiError from '../../src/utils/ApiError.js';
 
-// Mock the auth middleware to pass for authenticated tests
+// FLAG: this mock replaces the real authMiddleware so these tests exercise
+// routing/wiring only, not real JWT verification. It intentionally mirrors
+// the real middleware's "reject if no Bearer header" behavior so the
+// "requires auth" tests below are actually meaningful (a mock that always
+// calls next() would make every request pass regardless of auth header).
 vi.mock('../../src/middlewares/auth.middleware.js', () => ({
   default: vi.fn((req, res, next) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return next(new ApiError(401, 'Invalid or expired token'));
+    }
     req.user = { id: 'user-1', email: 'test@example.com' };
     next();
   }),
 }));
 
+// FLAG: this mock replaces both checkout controller functions so these tests
+// only exercise the route/middleware chain, not real business logic. Without
+// this, `initiateCheckout`/`handleChapaWebhook` would be the real imported
+// functions (not vi.fn()s), and any `.toHaveBeenCalled()` assertion on them
+// would throw at runtime instead of failing meaningfully.
 vi.mock('../../src/controllers/checkout.controller.js', () => ({
   initiateCheckout: vi.fn(async (req, res) =>
     res
