@@ -15,7 +15,7 @@ function mockRes() {
   return res;
 }
 
-describe.skip('product.controller', () => {
+describe('product.controller', () => {
   it('listProducts delegates to getPublishedProducts and responds 200 with SuccessResponse', async () => {
     const payload = { items: [], page: 1, limit: 20, total: 0 };
     vi.mocked(productService.getPublishedProducts).mockResolvedValue(payload);

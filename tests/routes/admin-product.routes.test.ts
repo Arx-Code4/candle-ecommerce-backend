@@ -8,7 +8,13 @@ vi.mock('../../src/middlewares/auth.middleware.js', () => ({
 vi.mock('../../src/middlewares/adminOnly.middleware.js', () => ({
   default: vi.fn((req, res, next) => next()),
 }));
+vi.mock('../../src/middlewares/upload.middleware.js', () => ({
+  default: vi.fn((req, res, next) => next()),
+}));
 
+vi.mock('../../src/middlewares/cloudinaryupload.middleware.js', () => ({
+  default: vi.fn((req, res, next) => next()),
+}));
 vi.mock('../../src/controllers/admin-product.controller.js', () => ({
   createProduct: vi.fn((req, res) => res.status(201).json({})),
   listAllProducts: vi.fn((req, res) => res.status(200).json({})),
@@ -18,6 +24,8 @@ vi.mock('../../src/controllers/admin-product.controller.js', () => ({
 
 import authMiddleware from '../../src/middlewares/auth.middleware.js';
 import adminOnly from '../../src/middlewares/adminOnly.middleware.js';
+import productPhotosUpload from '../../src/middlewares/upload.middleware.js';
+import attachProductPhotos from '../../src/middlewares/cloudinaryupload.middleware.js';
 import * as adminProductController from '../../src/controllers/admin-product.controller.js';
 import adminProductRoutes from '../../src/routes/admin-product.routes.js';
 import errorMiddleware from '../../src/middlewares/error.middleware.js';
@@ -38,6 +46,12 @@ describe('admin-product.routes', () => {
     vi.clearAllMocks();
     (authMiddleware as ReturnType<typeof vi.fn>).mockImplementation((req, res, next) => next());
     (adminOnly as ReturnType<typeof vi.fn>).mockImplementation((req, res, next) => next());
+    (productPhotosUpload as ReturnType<typeof vi.fn>).mockImplementation((req, res, next) =>
+      next(),
+    );
+    (attachProductPhotos as ReturnType<typeof vi.fn>).mockImplementation((req, res, next) =>
+      next(),
+    );
     app = buildApp();
   });
 
@@ -97,8 +111,31 @@ describe('admin-product.routes', () => {
     expect(res.status).toBe(400);
     expect(adminProductController.updateProductStatus).not.toHaveBeenCalled();
   });
+  it('PATCH /:id runs upload and cloudinary middlewares before the controller on success', async () => {
+    const res = await request(app)
+      .patch('/admin/products/product-1')
+      .send({ name: 'Updated Name' });
 
-  it('runs middleware in the order auth -> adminOnly -> validate', async () => {
+    expect(productPhotosUpload).toHaveBeenCalledTimes(1);
+    expect(attachProductPhotos).toHaveBeenCalledTimes(1);
+    expect(adminProductController.updateProduct).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(200);
+  });
+
+  it('PATCH /:id does not run upload/cloudinary middlewares when auth fails', async () => {
+    (authMiddleware as ReturnType<typeof vi.fn>).mockImplementation((req, res, next) =>
+      next(new ApiError(401, 'No token provided')),
+    );
+
+    const res = await request(app).patch('/admin/products/product-1').send({ name: 'x' });
+
+    expect(res.status).toBe(401);
+    expect(productPhotosUpload).not.toHaveBeenCalled();
+    expect(attachProductPhotos).not.toHaveBeenCalled();
+    expect(adminProductController.updateProduct).not.toHaveBeenCalled();
+  });
+
+  it('runs middleware in the order auth -> adminOnly ->multer -> cloudinary -> validate', async () => {
     (authMiddleware as ReturnType<typeof vi.fn>).mockImplementation((req, res, next) =>
       next(new ApiError(401, 'No token provided')),
     );
@@ -107,6 +144,25 @@ describe('admin-product.routes', () => {
 
     expect(authMiddleware).toHaveBeenCalledTimes(1);
     expect(adminOnly).not.toHaveBeenCalled();
+    expect(productPhotosUpload).not.toHaveBeenCalled();
+    expect(attachProductPhotos).not.toHaveBeenCalled();
     expect(adminProductController.createProduct).not.toHaveBeenCalled();
+  });
+
+  it('runs upload and cloudinary middlewares before the controller on success', async () => {
+    const res = await request(app)
+      .post('/admin/products')
+      .send({
+        name: 'Vanilla Bliss',
+        description: 'A warm vanilla candle',
+        price: 19.99,
+        photos: [{ url: 'https://example.com/photo.jpg' }],
+        variants: [{ scent: 'Vanilla', size: 'Large', stock: 10 }],
+      });
+
+    expect(productPhotosUpload).toHaveBeenCalledTimes(1);
+    expect(attachProductPhotos).toHaveBeenCalledTimes(1);
+    expect(adminProductController.createProduct).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(201);
   });
 });
