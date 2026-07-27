@@ -28,7 +28,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe.skip('product.routes', () => {
+describe('product.routes', () => {
   it('GET / has no auth requirement', async () => {
     const app = buildApp();
 

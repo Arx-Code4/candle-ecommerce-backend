@@ -1,6 +1,6 @@
 import { listProductsQuerySchema } from '../../src/schemas/product.schema.js';
 
-describe.skip('listProductsQuerySchema', () => {
+describe('listProductsQuerySchema', () => {
   it('coerces string page and limit to numbers', () => {
     const result = listProductsQuerySchema.safeParse({ query: { page: '2', limit: '10' } });
     expect(result.success).toBe(true);
