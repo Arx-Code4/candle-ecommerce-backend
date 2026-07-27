@@ -1,4 +1,3 @@
-// tests/routes/cart.routes.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
@@ -7,9 +6,12 @@ import * as cartController from '../../src/controllers/cart.controller.js';
 import errorMiddleware from '../../src/middlewares/error.middleware.js';
 import ApiError from '../../src/utils/ApiError.js';
 
-// Mock the auth middleware to always pass for tests that need it
+// Mock auth middleware to only pass when Authorization header exists
 vi.mock('../../src/middlewares/auth.middleware.js', () => ({
   default: vi.fn((req, res, next) => {
+    if (!req.headers.authorization) {
+      return next(new ApiError(401, 'No token provided'));
+    }
     req.user = { id: 'user-1', email: 'test@example.com' };
     next();
   }),
@@ -46,7 +48,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe.skip('cart.routes', () => {
+describe('cart.routes', () => {
   it('GET / requires auth', async () => {
     const app = buildApp();
 
@@ -91,7 +93,8 @@ describe.skip('cart.routes', () => {
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({
       statusCode: 400,
-      message: expect.stringContaining('Invalid'),
+      message: 'Validation failed',
+      errors: expect.arrayContaining([expect.stringMatching(/Invalid|uuid/i)]),
     });
     expect(cartController.addCartItem).not.toHaveBeenCalled();
   });
@@ -119,7 +122,8 @@ describe.skip('cart.routes', () => {
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({
       statusCode: 400,
-      message: expect.stringContaining('Invalid ID format'),
+      message: 'Validation failed',
+      errors: expect.arrayContaining([expect.stringMatching(/Invalid ID format/)]),
     });
     expect(cartController.updateCartItem).not.toHaveBeenCalled();
   });
@@ -142,7 +146,8 @@ describe.skip('cart.routes', () => {
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({
       statusCode: 400,
-      message: expect.stringContaining('Invalid ID format'),
+      message: 'Validation failed',
+      errors: expect.arrayContaining([expect.stringMatching(/Invalid ID format/)]),
     });
     expect(cartController.removeCartItem).not.toHaveBeenCalled();
   });
