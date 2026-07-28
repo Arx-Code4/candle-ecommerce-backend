@@ -42,3 +42,13 @@ export const resetPassword = asyncHandler(async (req: Request, res: Response) =>
     .status(HTTP_STATUS.OK)
     .json(new SuccessResponse(HTTP_STATUS.OK, 'Password reset successful', null));
 });
+
+export const refreshToken = asyncHandler(async (req: Request, res: Response) => {
+  const result = await authService.refreshAccessToken(req.body.refreshToken);
+  res.status(HTTP_STATUS.OK).json(new SuccessResponse(HTTP_STATUS.OK, 'Token refreshed', result));
+});
+
+export const logout = asyncHandler(async (req: Request, res: Response) => {
+  await authService.logoutUser(req.body.refreshToken);
+  res.status(HTTP_STATUS.OK).json(new SuccessResponse(HTTP_STATUS.OK, 'Logged out', null));
+});

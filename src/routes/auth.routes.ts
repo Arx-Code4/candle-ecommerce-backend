@@ -9,6 +9,8 @@ import {
   loginSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  refreshTokenSchema,
+  logoutSchema,
 } from '../schemas/auth.schema.js';
 import {
   register,
@@ -16,6 +18,8 @@ import {
   getMe,
   forgotPassword,
   resetPassword,
+  logout,
+  refreshToken,
 } from '../controllers/auth.controller.js';
 
 const router = Router();
@@ -25,5 +29,11 @@ router.post('/login', authLimiter, validate(loginSchema), login);
 router.get('/me', authMiddleware, getMe);
 router.post('/forgot-password', defaultLimiter, validate(forgotPasswordSchema), forgotPassword);
 router.post('/reset-password', defaultLimiter, validate(resetPasswordSchema), resetPassword);
+router.post('/refresh-token', defaultLimiter, validate(refreshTokenSchema), refreshToken);
+router.post('/logout', defaultLimiter, validate(logoutSchema), logout);
+
+//Why defaultLimiter, not authLimiter:
+// authLimiter on /login//register exists specifically to slow down credential-guessing (someone trying many email/password combos).
+// A refresh token isn't guessable — it's a long random-looking signed value — so that specific threat model doesn't apply here; the general rate limit is enough, matching how forgot-password/reset-password are already categorized.
 
 export default router;
