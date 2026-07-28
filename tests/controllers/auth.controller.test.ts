@@ -7,6 +7,8 @@ import {
   getMe,
   forgotPassword,
   resetPassword,
+  refreshToken,
+  logout,
 } from '../../src/controllers/auth.controller.js';
 import * as authService from '../../src/services/auth.service.js';
 import ApiError from '../../src/utils/ApiError.js';
@@ -17,6 +19,8 @@ vi.mock('../../src/services/auth.service.js', () => ({
   getUserById: vi.fn(),
   requestPasswordReset: vi.fn(),
   resetPassword: vi.fn(),
+  refreshToken: vi.fn(),
+  logout: vi.fn(),
 }));
 
 function makeRes(): Response {
@@ -156,5 +160,35 @@ describe('resetPassword', () => {
 
     expect(next).toHaveBeenCalledWith(serviceError);
     expect(res.json).not.toHaveBeenCalled();
+  });
+});
+
+describe('refreshToken', () => {
+  it('delegates to authService.refreshAccessToken and responds 200', async () => {
+    const req = { body: { refreshToken: 'rt-1' } } as unknown as Request;
+    const res = makeRes();
+    const next = makeNext();
+    vi.mocked(authService.refreshAccessToken).mockResolvedValue({
+      accessToken: 'new-at',
+      refreshToken: 'new-rt',
+    });
+
+    await refreshToken(req, res, next);
+
+    expect(authService.refreshAccessToken).toHaveBeenCalledWith('rt-1');
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+});
+
+describe('logout', () => {
+  it('delegates to authService.logoutUser and responds 200', async () => {
+    const req = { body: { refreshToken: 'rt-1' } } as unknown as Request;
+    const res = makeRes();
+    const next = makeNext();
+
+    await logout(req, res, next);
+
+    expect(authService.logoutUser).toHaveBeenCalledWith('rt-1');
+    expect(res.status).toHaveBeenCalledWith(200);
   });
 });

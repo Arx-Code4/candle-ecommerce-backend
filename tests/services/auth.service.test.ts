@@ -1,13 +1,15 @@
 // tests/services/auth.service.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Prisma } from '@prisma/client';
-import type { User, PasswordResetToken } from '@prisma/client';
+import type { User, PasswordResetToken, RefreshToken } from '@prisma/client';
 import {
   registerUser,
   loginUser,
   getUserById,
   requestPasswordReset,
   resetPassword,
+  refreshAccessToken,
+  logoutUser,
 } from '../../src/services/auth.service.js';
 import { prisma } from '../../src/config/db.js';
 import bcrypt from 'bcrypt';
@@ -24,6 +26,12 @@ vi.mock('../../src/config/db.js', () => ({
     passwordResetToken: {
       create: vi.fn(),
       findUnique: vi.fn(),
+    },
+    refreshToken: {
+      create: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn(),
     },
     $transaction: vi.fn(),
   },
@@ -68,7 +76,17 @@ function buildUser(overrides: Partial<User> = {}): User {
     ...overrides,
   };
 }
-
+function buildRefreshToken(overrides: Partial<RefreshToken> = {}): RefreshToken {
+  return {
+    id: 'rt-1',
+    userId: 'user-1',
+    tokenHash: 'hash-1',
+    expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
+    revokedAt: null,
+    createdAt: new Date(),
+    ...overrides,
+  };
+}
 function buildPasswordResetToken(overrides: Partial<PasswordResetToken> = {}): PasswordResetToken {
   return {
     id: 'token-1',
@@ -95,7 +113,9 @@ describe('registerUser', () => {
     const result = await registerUser(baseInput);
 
     expect(result.user).not.toHaveProperty('password');
-    expect(result.token).toBeDefined();
+    // was: expect(result.token).toBeDefined();
+    expect(result.accessToken).toBeDefined();
+    expect(result.refreshToken).toBeDefined();
     expect(result.cartItemAdded).toBe(false);
     expect(vi.mocked(cartService.addItemToCart)).not.toHaveBeenCalled();
   });
@@ -164,6 +184,26 @@ describe('registerUser', () => {
   });
 });
 
+// this is the one behavior that's easy to silently get wrong — accidentally storing the raw token instead of its hash defeats the entire point of hashing (a DB leak would hand out live sessions).
+//  Asserting tokenHash !== refreshToken directly catches that regression.
+describe('issueTokenPair via registerUser', () => {
+  const baseInput = { name: 'Jane Doe', email: 'jane@example.com', password: 'password123' };
+
+  it('persists a hashed refresh token when registering', async () => {
+    const mockUser = buildUser();
+    vi.mocked(prisma.user.create).mockResolvedValue(mockUser);
+
+    const result = await registerUser(baseInput);
+
+    expect(prisma.refreshToken.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ userId: mockUser.id }),
+      }),
+    );
+    const createCall = vi.mocked(prisma.refreshToken.create).mock.calls[0][0];
+    expect(createCall.data.tokenHash).not.toBe(result.refreshToken);
+  });
+});
 describe('loginUser', () => {
   const baseInput = { email: 'jane@example.com', password: 'password123' };
   const storedUser = buildUser();
@@ -176,7 +216,9 @@ describe('loginUser', () => {
     const result = await loginUser(baseInput);
 
     expect(result.user).not.toHaveProperty('password');
-    expect(result.token).toBeDefined();
+    // was: expect(result.token).toBeDefined();
+    expect(result.accessToken).toBeDefined();
+    expect(result.refreshToken).toBeDefined();
     expect(result.cartItemAdded).toBe(false);
   });
 
@@ -411,5 +453,64 @@ describe('resetPassword', () => {
     vi.mocked(prisma.$transaction).mockResolvedValue(undefined);
 
     await expect(resetPassword('good-token', 'samepassword123')).resolves.toBeUndefined();
+  });
+});
+
+describe('refreshAccessToken', () => {
+  const baseInput = { name: 'Jane Doe', email: 'jane@example.com', password: 'password123' };
+
+  //the rotation test is the core "single-use" guarantee — if this ever regressed to not revoking the old row, a stolen refresh token would work indefinitely instead of being single-use.
+  it('rotates: revokes the old row and returns a new token pair', async () => {
+    const mockUser = buildUser();
+    vi.mocked(prisma.user.create).mockResolvedValue(mockUser);
+    const { refreshToken } = await registerUser(baseInput);
+
+    const createCall = vi.mocked(prisma.refreshToken.create).mock.calls[0][0];
+    const storedRow = buildRefreshToken({
+      id: 'rt-1',
+      userId: mockUser.id,
+      tokenHash: createCall.data.tokenHash,
+    });
+    vi.mocked(prisma.refreshToken.findUnique).mockResolvedValue(storedRow);
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(mockUser);
+
+    const result = await refreshAccessToken(refreshToken);
+
+    expect(prisma.refreshToken.update).toHaveBeenCalledWith({
+      where: { id: 'rt-1' },
+      data: { revokedAt: expect.any(Date) },
+    });
+    expect(result.refreshToken).not.toBe(refreshToken);
+  });
+
+  // The "already revoked" test is the actual theft-detection behavior.
+
+  it('throws 401 when the stored row has already been revoked', async () => {
+    vi.mocked(prisma.refreshToken.findUnique).mockResolvedValue({
+      id: 'rt-1',
+      tokenHash: 'x',
+      expiresAt: new Date(Date.now() + 10000),
+      revokedAt: new Date(),
+    } as any);
+
+    await expect(refreshAccessToken('some-token')).rejects.toMatchObject({
+      statusCode: 401,
+      message: 'Invalid or expired refresh token',
+    });
+  });
+
+  // The bad-signature test confirms a malformed/foreign token fails safely rather than throwing an unhandled JsonWebTokenError that'd surface as a 500 instead of a clean 401.
+
+  it('throws 401 for a token with a bad signature', async () => {
+    await expect(refreshAccessToken('garbage')).rejects.toMatchObject({ statusCode: 401 });
+  });
+});
+
+// this is specifically testing the idempotency point from the design discussion — calling logout with a token that doesn't match anything (already logged out, garbage input) must not throw.
+// This is exactly the case that would break if logoutUser used update instead of updateMany.
+describe('logoutUser', () => {
+  it('revokes the matching row without throwing when none matches', async () => {
+    vi.mocked(prisma.refreshToken.updateMany).mockResolvedValue({ count: 0 });
+    await expect(logoutUser('anything')).resolves.toBeUndefined();
   });
 });

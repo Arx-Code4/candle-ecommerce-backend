@@ -4,6 +4,8 @@ import {
   loginSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  refreshTokenSchema,
+  logoutSchema,
 } from '../../src/schemas/auth.schema.js';
 
 describe('registerSchema', () => {
@@ -106,6 +108,29 @@ describe('resetPasswordSchema', () => {
     const result = resetPasswordSchema.safeParse({
       body: { token: 'abc123' },
     });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('refreshTokenSchema', () => {
+  it('accepts a non-empty refreshToken', () => {
+    const result = refreshTokenSchema.safeParse({ body: { refreshToken: 'abc' } });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an empty refreshToken', () => {
+    const result = refreshTokenSchema.safeParse({ body: { refreshToken: '' } });
+    expect(result.success).toBe(false);
+  });
+});
+describe('logoutSchema', () => {
+  it('accepts a non-empty refreshToken', () => {
+    const result = logoutSchema.safeParse({ body: { refreshToken: 'abc' } });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an empty refreshToken', () => {
+    const result = logoutSchema.safeParse({ body: { refreshToken: '' } });
     expect(result.success).toBe(false);
   });
 });
