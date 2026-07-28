@@ -10,48 +10,61 @@ let server: Server;
  * 🛡️ Handles Graceful Shutdown of the application stack
  * Prevents requests from cutting mid-flight during scaling or deployments
  */
+let isShuttingDown = false;
+
 const handleShutdown = async (signal: string) => {
-  logger.warn(`Received ${signal}. Starting orderly, graceful shutdown pipeline...`);
+  if (isShuttingDown) {
+    logger.warn(`Received ${signal} again — shutdown already in progress, ignoring.`);
+    return;
+  }
+  isShuttingDown = true;
 
-  if (server) {
-    // 1. Tell the HTTP server to stop accepting new client traffic
-    server.close(async (err) => {
-      if (err) {
-        logger.error(err, 'Error occurred while closing the HTTP server connection pool');
-        process.exit(1);
-      }
+  logger.warn(`Received ${signal}. Starting graceful shutdown pipeline...`);
 
-      logger.info('HTTP server has closed all active connection pools.');
+  const forceExitTimer = setTimeout(async () => {
+    logger.fatal('Graceful shutdown exceeded 10s. Forcing emergency cleanup...');
+    try {
+      await prisma.$disconnect();
+      logger.info('Database disconnected (emergency path)');
+    } catch (err) {
+      logger.error(err, 'Emergency disconnect failed');
+    } finally {
+      process.exit(1);
+    }
+  }, 10_000);
+  forceExitTimer.unref(); // don't let this timer itself keep the process alive
 
-      try {
-        // 2. Disconnect safely from Prisma once active workflows finish
-        logger.info('Disconnecting database clients...');
-        await prisma.$disconnect();
-        logger.info('Database disconnected cleanly.');
-        
-        process.exit(0);
-      } catch (dbError) {
-        logger.error(dbError, 'Error closing database clients during shutdown');
-        process.exit(1);
-      }
-    });
-  } else {
-    // If the server never started listening, just close database connections and exit
-    await prisma.$disconnect();
-    process.exit(0);
+  const cleanupAndExit = async (exitCode: number) => {
+    clearTimeout(forceExitTimer);
+    try {
+      await prisma.$disconnect();
+      logger.info('Database disconnected successfully');
+    } catch (err) {
+      logger.error(err, 'Database disconnect failed');
+      exitCode = 1;
+    } finally {
+      process.exit(exitCode);
+    }
+  };
+
+  if (!server) {
+    await cleanupAndExit(0);
+    return;
   }
 
-  // 💥 Safety Timeout Net: Force an abrupt exit if cleanup gets stuck longer than 10s
-  setTimeout(() => {
-    logger.fatal('Shutdown took too long! Forcing immediate process termination.');
-    process.exit(1);
-  }, 10000);
+  server.close(async (err) => {
+    if (err) {
+      logger.error(err, 'Error closing HTTP server');
+      await cleanupAndExit(1);
+      return;
+    }
+    logger.info('HTTP server closed — no longer accepting connections');
+    await cleanupAndExit(0);
+  });
 };
 
-// Listen for operational termination events
-process.on('SIGINT', () => handleShutdown('SIGINT'));
 process.on('SIGTERM', () => handleShutdown('SIGTERM'));
-
+process.on('SIGINT', () => handleShutdown('SIGINT'));
 /**
  * 🚀 Boosts the Application runtime
  */
@@ -66,7 +79,7 @@ const startServer = async () => {
       logger.info(`Server running on port ${env.PORT} in ${env.NODE_ENV} mode`);
     });
   } catch (error) {
-    logger.fatal(error, 'Failed to initialize system core startup layers');    
+    logger.fatal(error, 'Failed to initialize system core startup layers');
     await prisma.$disconnect();
     process.exit(1);
   }
