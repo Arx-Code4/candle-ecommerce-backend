@@ -19,8 +19,8 @@ vi.mock('../../src/services/auth.service.js', () => ({
   getUserById: vi.fn(),
   requestPasswordReset: vi.fn(),
   resetPassword: vi.fn(),
-  refreshToken: vi.fn(),
-  logout: vi.fn(),
+  refreshAccessToken: vi.fn(),
+  logoutUser: vi.fn(),
 }));
 
 function makeRes(): Response {

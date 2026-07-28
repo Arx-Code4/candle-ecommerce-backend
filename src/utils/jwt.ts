@@ -9,9 +9,21 @@ export const generateAccessToken = (payload: { id: string; role: string }): stri
 };
 
 export const generateRefreshToken = (payload: { id: string }): string => {
-  return jwt.sign({ ...payload, type: 'refresh' }, env.JWT_REFRESH_SECRET, {
-    expiresIn: env.JWT_REFRESH_EXPIRES_IN as jwt.SignOptions['expiresIn'],
-  });
+  // Include a jti (JWT ID) to guarantee every refresh token is unique.
+  // This is essential for the rotation (single‑use) security mechanism:
+  // without it, two tokens issued for the same user at the same moment
+  // would be identical, making rotation ineffective.
+  return jwt.sign(
+    {
+      ...payload,
+      type: 'refresh',
+      jti: crypto.randomUUID(), // unique per call
+    },
+    env.JWT_REFRESH_SECRET,
+    {
+      expiresIn: env.JWT_REFRESH_EXPIRES_IN as jwt.SignOptions['expiresIn'],
+    },
+  );
 };
 
 export const verifyAccessToken = (token: string): { id: string; role: string; type: string } => {
