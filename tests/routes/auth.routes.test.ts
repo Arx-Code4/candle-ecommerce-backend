@@ -430,7 +430,10 @@ describe('POST /refresh-token', () => {
 
   it('reaches the controller with a valid body', async () => {
     const app = buildTestApp();
-    const res = await request(app).post('/auth/refresh-token').send({ refreshToken: 'some-token' });
+    const res = await request(app).post('/auth/refresh-token').send({
+      refreshToken:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwYXlsb2FkIjoiNmE2YjNiNmM4NmJhMGZmYzA5MmYwNjBmIiwiaWF0IjoxNzg1NDgyNTI0LCJleHAiOjE3ODU0ODM0MjR9.MyChUBEVmH-IH1Epbvt6EaVqak2Ef_f4YJHeDvRty4U',
+    });
     expect(res.status).toBe(200);
     expect(authController.refreshToken).toHaveBeenCalled();
   });
@@ -439,7 +442,10 @@ describe('POST /refresh-token', () => {
 describe('POST /logout', () => {
   it('reaches the controller with a valid body', async () => {
     const app = buildTestApp();
-    const res = await request(app).post('/auth/logout').send({ refreshToken: 'some-token' });
+    const res = await request(app).post('/auth/logout').send({
+      refreshToken:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwYXlsb2FkIjoiNmE2YjNiNmM4NmJhMGZmYzA5MmYwNjBmIiwiaWF0IjoxNzg1NDgyNTI0LCJleHAiOjE3ODU0ODM0MjR9.MyChUBEVmH-IH1Epbvt6EaVqak2Ef_f4YJHeDvRty4U',
+    });
     expect(res.status).toBe(200);
   });
 });

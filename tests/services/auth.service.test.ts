@@ -14,6 +14,8 @@ import {
 import { prisma } from '../../src/config/db.js';
 import bcrypt from 'bcrypt';
 import * as cartService from '../../src/services/cart.service.js';
+import { generateRefreshToken, hashToken } from '../../src/utils/jwt.js';
+
 import * as notificationService from '../../src/services/notification.service.js';
 import ApiError from '../../src/utils/ApiError.js';
 
@@ -29,8 +31,6 @@ vi.mock('../../src/config/db.js', () => ({
     },
     refreshToken: {
       create: vi.fn(),
-      findUnique: vi.fn(),
-      update: vi.fn(),
       updateMany: vi.fn(),
     },
     $transaction: vi.fn(),
@@ -455,62 +455,88 @@ describe('resetPassword', () => {
     await expect(resetPassword('good-token', 'samepassword123')).resolves.toBeUndefined();
   });
 });
-
 describe('refreshAccessToken', () => {
-  const baseInput = { name: 'Jane Doe', email: 'jane@example.com', password: 'password123' };
-
-  //the rotation test is the core "single-use" guarantee — if this ever regressed to not revoking the old row, a stolen refresh token would work indefinitely instead of being single-use.
-  it('rotates: revokes the old row and returns a new token pair', async () => {
+  it('rotates: revokes the old token and returns a new pair inside one transaction', async () => {
     const mockUser = buildUser();
-    vi.mocked(prisma.user.create).mockResolvedValue(mockUser);
-    const { refreshToken } = await registerUser(baseInput);
+    const refreshToken = generateRefreshToken({ id: mockUser.id });
+    const updateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    const mockTx = {
+      refreshToken: { updateMany: updateManyMock, create: vi.fn().mockResolvedValue({}) },
+      user: { findUnique: vi.fn().mockResolvedValue(mockUser) },
+    } as unknown as Prisma.TransactionClient;
 
-    const createCall = vi.mocked(prisma.refreshToken.create).mock.calls[0][0];
-    const storedRow = buildRefreshToken({
-      id: 'rt-1',
-      userId: mockUser.id,
-      tokenHash: createCall.data.tokenHash,
-    });
-    vi.mocked(prisma.refreshToken.findUnique).mockResolvedValue(storedRow);
-    vi.mocked(prisma.user.findUnique).mockResolvedValue(mockUser);
+    vi.mocked(prisma.$transaction).mockImplementation((async (
+      fn: (tx: Prisma.TransactionClient) => Promise<unknown>,
+    ) => fn(mockTx)) as typeof prisma.$transaction);
 
     const result = await refreshAccessToken(refreshToken);
 
-    expect(prisma.refreshToken.update).toHaveBeenCalledWith({
-      where: { id: 'rt-1' },
+    expect(updateManyMock).toHaveBeenCalledWith({
+      where: {
+        tokenHash: hashToken(refreshToken),
+        revokedAt: null,
+        expiresAt: { gt: expect.any(Date) },
+      },
       data: { revokedAt: expect.any(Date) },
     });
     expect(result.refreshToken).not.toBe(refreshToken);
+    expect(result.accessToken).toBeDefined();
   });
 
-  // The "already revoked" test is the actual theft-detection behavior.
+  it('throws 401 when the token has already been revoked (updateMany matches nothing)', async () => {
+    const refreshToken = generateRefreshToken({ id: 'user-1' });
+    const mockTx = {
+      refreshToken: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      user: { findUnique: vi.fn() },
+    } as unknown as Prisma.TransactionClient;
 
-  it('throws 401 when the stored row has already been revoked', async () => {
-    vi.mocked(prisma.refreshToken.findUnique).mockResolvedValue({
-      id: 'rt-1',
-      tokenHash: 'x',
-      expiresAt: new Date(Date.now() + 10000),
-      revokedAt: new Date(),
-    } as any);
+    vi.mocked(prisma.$transaction).mockImplementation((async (
+      fn: (tx: Prisma.TransactionClient) => Promise<unknown>,
+    ) => fn(mockTx)) as typeof prisma.$transaction);
 
-    await expect(refreshAccessToken('some-token')).rejects.toMatchObject({
+    await expect(refreshAccessToken(refreshToken)).rejects.toMatchObject({
       statusCode: 401,
       message: 'Invalid or expired refresh token',
     });
   });
 
-  // The bad-signature test confirms a malformed/foreign token fails safely rather than throwing an unhandled JsonWebTokenError that'd surface as a 500 instead of a clean 401.
-
-  it('throws 401 for a token with a bad signature', async () => {
+  it('throws 401 for a malformed token without ever touching the database', async () => {
     await expect(refreshAccessToken('garbage')).rejects.toMatchObject({ statusCode: 401 });
+    expect(vi.mocked(prisma.$transaction)).not.toHaveBeenCalled();
+  });
+
+  it('throws 401 when the token payload references a user that no longer exists', async () => {
+    const refreshToken = generateRefreshToken({ id: 'deleted-user' });
+    const mockTx = {
+      refreshToken: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      user: { findUnique: vi.fn().mockResolvedValue(null) },
+    } as unknown as Prisma.TransactionClient;
+
+    vi.mocked(prisma.$transaction).mockImplementation((async (
+      fn: (tx: Prisma.TransactionClient) => Promise<unknown>,
+    ) => fn(mockTx)) as typeof prisma.$transaction);
+
+    await expect(refreshAccessToken(refreshToken)).rejects.toMatchObject({ statusCode: 401 });
   });
 });
 
 // this is specifically testing the idempotency point from the design discussion — calling logout with a token that doesn't match anything (already logged out, garbage input) must not throw.
 // This is exactly the case that would break if logoutUser used update instead of updateMany.
 describe('logoutUser', () => {
-  it('revokes the matching row without throwing when none matches', async () => {
+  it('revokes the matching row', async () => {
+    vi.mocked(prisma.refreshToken.updateMany).mockResolvedValue({ count: 1 });
+
+    await logoutUser('some-refresh-token');
+
+    expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+      where: { tokenHash: hashToken('some-refresh-token'), revokedAt: null },
+      data: { revokedAt: expect.any(Date) },
+    });
+  });
+
+  it('is idempotent — does not throw when nothing matches', async () => {
     vi.mocked(prisma.refreshToken.updateMany).mockResolvedValue({ count: 0 });
-    await expect(logoutUser('anything')).resolves.toBeUndefined();
+
+    await expect(logoutUser('already-logged-out-token')).resolves.toBeUndefined();
   });
 });

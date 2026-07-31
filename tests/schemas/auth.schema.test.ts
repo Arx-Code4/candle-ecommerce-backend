@@ -114,7 +114,12 @@ describe('resetPasswordSchema', () => {
 
 describe('refreshTokenSchema', () => {
   it('accepts a non-empty refreshToken', () => {
-    const result = refreshTokenSchema.safeParse({ body: { refreshToken: 'abc' } });
+    const result = refreshTokenSchema.safeParse({
+      body: {
+        refreshToken:
+          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwYXlsb2FkIjoiNmE2YjNiNmM4NmJhMGZmYzA5MmYwNjBmIiwiaWF0IjoxNzg1NDgyNTI0LCJleHAiOjE3ODU0ODM0MjR9.MyChUBEVmH-IH1Epbvt6EaVqak2Ef_f4YJHeDvRty4U',
+      },
+    });
     expect(result.success).toBe(true);
   });
 
@@ -125,7 +130,12 @@ describe('refreshTokenSchema', () => {
 });
 describe('logoutSchema', () => {
   it('accepts a non-empty refreshToken', () => {
-    const result = logoutSchema.safeParse({ body: { refreshToken: 'abc' } });
+    const result = logoutSchema.safeParse({
+      body: {
+        refreshToken:
+          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwYXlsb2FkIjoiNmE2YjNiNmM4NmJhMGZmYzA5MmYwNjBmIiwiaWF0IjoxNzg1NDgyNTI0LCJleHAiOjE3ODU0ODM0MjR9.MyChUBEVmH-IH1Epbvt6EaVqak2Ef_f4YJHeDvRty4U',
+      },
+    });
     expect(result.success).toBe(true);
   });
 
