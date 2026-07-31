@@ -29,15 +29,3 @@ export const resetPasswordSchema = z.object({
     newPassword: z.string().min(8),
   }),
 });
-
-export const refreshTokenSchema = z.object({
-  body: z.object({
-    refreshToken: z.jwt(),
-  }),
-});
-
-export const logoutSchema = z.object({
-  body: z.object({
-    refreshToken: z.jwt(),
-  }),
-});

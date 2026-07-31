@@ -4,8 +4,6 @@ import {
   loginSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
-  refreshTokenSchema,
-  logoutSchema,
 } from '../../src/schemas/auth.schema.js';
 
 describe('registerSchema', () => {
@@ -108,39 +106,6 @@ describe('resetPasswordSchema', () => {
     const result = resetPasswordSchema.safeParse({
       body: { token: 'abc123' },
     });
-    expect(result.success).toBe(false);
-  });
-});
-
-describe('refreshTokenSchema', () => {
-  it('accepts a non-empty refreshToken', () => {
-    const result = refreshTokenSchema.safeParse({
-      body: {
-        refreshToken:
-          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwYXlsb2FkIjoiNmE2YjNiNmM4NmJhMGZmYzA5MmYwNjBmIiwiaWF0IjoxNzg1NDgyNTI0LCJleHAiOjE3ODU0ODM0MjR9.MyChUBEVmH-IH1Epbvt6EaVqak2Ef_f4YJHeDvRty4U',
-      },
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('rejects an empty refreshToken', () => {
-    const result = refreshTokenSchema.safeParse({ body: { refreshToken: '' } });
-    expect(result.success).toBe(false);
-  });
-});
-describe('logoutSchema', () => {
-  it('accepts a non-empty refreshToken', () => {
-    const result = logoutSchema.safeParse({
-      body: {
-        refreshToken:
-          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwYXlsb2FkIjoiNmE2YjNiNmM4NmJhMGZmYzA5MmYwNjBmIiwiaWF0IjoxNzg1NDgyNTI0LCJleHAiOjE3ODU0ODM0MjR9.MyChUBEVmH-IH1Epbvt6EaVqak2Ef_f4YJHeDvRty4U',
-      },
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('rejects an empty refreshToken', () => {
-    const result = logoutSchema.safeParse({ body: { refreshToken: '' } });
     expect(result.success).toBe(false);
   });
 });

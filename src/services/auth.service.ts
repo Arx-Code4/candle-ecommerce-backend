@@ -2,9 +2,8 @@ import { Prisma } from '@prisma/client';
 import type { User } from '@prisma/client';
 import crypto from 'crypto';
 import bcrypt from 'bcrypt';
-import ms from 'ms';
 import { prisma } from '../config/db.js';
-import { env } from '../config/env.js';
+import { env, REFRESH_TOKEN_TTL_MS } from '../config/env.js';
 import {
   generateAccessToken,
   generateRefreshToken,
@@ -19,17 +18,6 @@ import { sendPasswordResetEmail } from './notification.service.js';
 import logger from '../utils/logger.js';
 
 type SafeUser = Omit<User, 'password'>;
-
-// ms()'s TypeScript types only accept the narrow `StringValue` template-literal
-// union (e.g. '30d'), not the plain `string` zod gives env.JWT_REFRESH_EXPIRES_IN —
-// same reason jwt.ts casts env.JWT_EXPIRES_IN for jwt.sign()'s expiresIn option.
-// The cast doesn't change runtime behavior at all: ms() still returns `undefined`
-// if the string isn't actually a valid duration, which the check below catches.
-const REFRESH_TOKEN_TTL_MS: number | undefined = ms(env.JWT_REFRESH_EXPIRES_IN as ms.StringValue);
-
-if (REFRESH_TOKEN_TTL_MS === undefined) {
-  throw new Error('JWT_REFRESH_EXPIRES_IN is not a valid duration string');
-}
 
 const stripPassword = (user: User): SafeUser => {
   const { password, ...safeUser } = user;

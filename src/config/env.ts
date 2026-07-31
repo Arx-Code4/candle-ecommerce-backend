@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import dotenv from 'dotenv';
-
+import ms from 'ms';
 dotenv.config();
 
 const envSchema = z.object({
@@ -33,3 +33,12 @@ if (!parsed.success) {
 }
 
 export const env = parsed.data;
+
+//auth.service.ts needs this (to set the DB row's expiresAt) and cookies.ts needs it (to set the cookie's maxAge) — computing it once here, instead of in either of those two files, is what makes cookies.ts's import valid, and guarantees the cookie's lifetime and the token's real lifetime can never drift apart.
+export const REFRESH_TOKEN_TTL_MS: number = (() => {
+  const parsed = ms(env.JWT_REFRESH_EXPIRES_IN as ms.StringValue);
+  if (parsed === undefined) {
+    throw new Error('JWT_REFRESH_EXPIRES_IN is not a valid duration string');
+  }
+  return parsed;
+})();
