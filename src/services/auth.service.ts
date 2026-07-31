@@ -3,8 +3,13 @@ import type { User } from '@prisma/client';
 import crypto from 'crypto';
 import bcrypt from 'bcrypt';
 import { prisma } from '../config/db.js';
-import { env } from '../config/env.js';
-import { generateToken } from '../utils/jwt.js';
+import { env, REFRESH_TOKEN_TTL_MS } from '../config/env.js';
+import {
+  generateAccessToken,
+  generateRefreshToken,
+  verifyRefreshToken,
+  hashToken,
+} from '../utils/jwt.js';
 import ApiError from '../utils/ApiError.js';
 import { HTTP_STATUS } from '../constants/index.js';
 import * as cartService from './cart.service.js';
@@ -33,12 +38,42 @@ const tryAddPendingItem = async (userId: string, pendingVariantId?: string): Pro
   }
 };
 
+/**
+ * Issues a fresh access/refresh pair and persists a hash of the refresh
+ * token so it can later be looked up and revoked. Accepts an optional
+ * transaction client so refreshAccessToken can run this inside the same
+ * atomic unit as the old token's revocation — registerUser/loginUser call
+ * this with no second argument and just use the plain client.
+ */
+const issueTokenPair = async (
+  user: Pick<User, 'id' | 'role'>,
+  client: Prisma.TransactionClient | typeof prisma = prisma,
+): Promise<{ accessToken: string; refreshToken: string }> => {
+  const accessToken = generateAccessToken({ id: user.id, role: user.role });
+  const refreshToken = generateRefreshToken({ id: user.id });
+
+  await client.refreshToken.create({
+    data: {
+      userId: user.id,
+      tokenHash: hashToken(refreshToken),
+      expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
+    },
+  });
+
+  return { accessToken, refreshToken };
+};
+
 export const registerUser = async (input: {
   name: string;
   email: string;
   password: string;
   pendingVariantId?: string;
-}): Promise<{ user: SafeUser; token: string; cartItemAdded: boolean }> => {
+}): Promise<{
+  user: SafeUser;
+  accessToken: string;
+  refreshToken: string;
+  cartItemAdded: boolean;
+}> => {
   const hashedPassword = await bcrypt.hash(input.password, Number(env.BCRYPT_SALT_ROUNDS));
 
   let user: User;
@@ -60,17 +95,22 @@ export const registerUser = async (input: {
     throw error;
   }
 
-  const token = generateToken({ id: user.id, role: user.role });
+  const { accessToken, refreshToken } = await issueTokenPair(user);
   const cartItemAdded = await tryAddPendingItem(user.id, input.pendingVariantId);
 
-  return { user: stripPassword(user), token, cartItemAdded };
+  return { user: stripPassword(user), accessToken, refreshToken, cartItemAdded };
 };
 
 export const loginUser = async (input: {
   email: string;
   password: string;
   pendingVariantId?: string;
-}): Promise<{ user: SafeUser; token: string; cartItemAdded: boolean }> => {
+}): Promise<{
+  user: SafeUser;
+  accessToken: string;
+  refreshToken: string;
+  cartItemAdded: boolean;
+}> => {
   const user = await prisma.user.findUnique({ where: { email: input.email } });
 
   if (!user) {
@@ -83,10 +123,10 @@ export const loginUser = async (input: {
     throw new ApiError(HTTP_STATUS.UNAUTHORIZED, 'Invalid email or password');
   }
 
-  const token = generateToken({ id: user.id, role: user.role });
+  const { accessToken, refreshToken } = await issueTokenPair(user);
   const cartItemAdded = await tryAddPendingItem(user.id, input.pendingVariantId);
 
-  return { user: stripPassword(user), token, cartItemAdded };
+  return { user: stripPassword(user), accessToken, refreshToken, cartItemAdded };
 };
 
 export const getUserById = async (id: string): Promise<SafeUser> => {
@@ -95,6 +135,64 @@ export const getUserById = async (id: string): Promise<SafeUser> => {
     throw new ApiError(HTTP_STATUS.NOT_FOUND, 'User not found');
   }
   return stripPassword(user);
+};
+
+/**
+ * Verifies a presented refresh token, atomically revokes it (only if it's
+ * still unrevoked and unexpired), and issues a brand-new pair — all inside
+ * one transaction. The atomic updateMany is what actually prevents two
+ * concurrent requests with the same token both succeeding (the earlier
+ * findUnique-then-update version had a race window between the two calls);
+ * wrapping it with issueTokenPair in $transaction means a failure while
+ * creating the new row rolls back the revocation too, so a mid-request
+ * failure can never leave the user with zero valid sessions.
+ */
+export const refreshAccessToken = async (
+  presentedToken: string,
+): Promise<{ accessToken: string; refreshToken: string }> => {
+  let payload: { id: string; type: string };
+  try {
+    payload = verifyRefreshToken(presentedToken);
+  } catch {
+    throw new ApiError(HTTP_STATUS.UNAUTHORIZED, 'Invalid or expired refresh token');
+  }
+
+  if (payload.type !== 'refresh') {
+    throw new ApiError(HTTP_STATUS.UNAUTHORIZED, 'Invalid or expired refresh token');
+  }
+
+  const tokenHash = hashToken(presentedToken);
+
+  return prisma.$transaction(async (tx) => {
+    const revokeResult = await tx.refreshToken.updateMany({
+      where: { tokenHash, revokedAt: null, expiresAt: { gt: new Date() } },
+      data: { revokedAt: new Date() },
+    });
+
+    if (revokeResult.count === 0) {
+      throw new ApiError(HTTP_STATUS.UNAUTHORIZED, 'Invalid or expired refresh token');
+    }
+
+    const user = await tx.user.findUnique({ where: { id: payload.id } });
+    if (!user) {
+      throw new ApiError(HTTP_STATUS.UNAUTHORIZED, 'Invalid or expired refresh token');
+    }
+
+    return issueTokenPair(user, tx);
+  });
+};
+
+/**
+ * Revokes a single refresh token. Uses updateMany (not update) so calling
+ * this with an already-revoked, expired, or nonexistent token is a no-op
+ * rather than a thrown error — logout should be idempotent.
+ */
+export const logoutUser = async (presentedToken: string): Promise<void> => {
+  const tokenHash = hashToken(presentedToken);
+  await prisma.refreshToken.updateMany({
+    where: { tokenHash, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
 };
 
 export const requestPasswordReset = async (email: string): Promise<void> => {

@@ -13,57 +13,60 @@ import ApiError from '../../src/utils/ApiError.js';
 
 vi.mock('../../src/controllers/auth.controller.js', () => ({
   register: vi.fn(async (req, res) =>
-    res
-      .status(201)
-      .json({
-        statusCode: 201,
-        success: true,
-        message: 'User registered',
-        data: {
-          user: { id: 'user-1', name: 'Jane Doe', email: 'jane@example.com' },
-          token: 'jwt-token',
-          cartItemAdded: false,
-        },
-      }),
+    res.status(201).json({
+      statusCode: 201,
+      success: true,
+      message: 'User registered',
+      data: {
+        user: { id: 'user-1', name: 'Jane Doe', email: 'jane@example.com' },
+        token: 'jwt-token',
+        cartItemAdded: false,
+      },
+    }),
   ),
   login: vi.fn(async (req, res) =>
-    res
-      .status(200)
-      .json({
-        statusCode: 200,
-        success: true,
-        message: 'Login successful',
-        data: {
-          user: { id: 'user-1', name: 'Jane Doe', email: 'jane@example.com' },
-          token: 'jwt-token',
-          cartItemAdded: false,
-        },
-      }),
+    res.status(200).json({
+      statusCode: 200,
+      success: true,
+      message: 'Login successful',
+      data: {
+        user: { id: 'user-1', name: 'Jane Doe', email: 'jane@example.com' },
+        token: 'jwt-token',
+        cartItemAdded: false,
+      },
+    }),
   ),
   getMe: vi.fn(async (req, res) =>
-    res
-      .status(200)
-      .json({
-        statusCode: 200,
-        success: true,
-        message: 'OK',
-        data: { id: 'user-1', name: 'Jane Doe', email: 'jane@example.com' },
-      }),
+    res.status(200).json({
+      statusCode: 200,
+      success: true,
+      message: 'OK',
+      data: { id: 'user-1', name: 'Jane Doe', email: 'jane@example.com' },
+    }),
   ),
   forgotPassword: vi.fn(async (req, res) =>
-    res
-      .status(200)
-      .json({
-        statusCode: 200,
-        success: true,
-        message: 'If that email is registered, a reset link has been sent.',
-        data: null,
-      }),
+    res.status(200).json({
+      statusCode: 200,
+      success: true,
+      message: 'If that email is registered, a reset link has been sent.',
+      data: null,
+    }),
   ),
   resetPassword: vi.fn(async (req, res) =>
     res
       .status(200)
       .json({ statusCode: 200, success: true, message: 'Password reset successful', data: null }),
+  ),
+  refreshToken: vi.fn(async (req, res) =>
+    res.status(200).json({
+      statusCode: 200,
+      success: true,
+      message: 'Token refreshed',
+      data: { accessToken: 'new-at', refreshToken: 'new-rt' },
+    }),
+  ),
+  logout: vi.fn(async (req, res) =>
+    res.status(200).json({ statusCode: 200, success: true, message: 'Logged out', data: null }),
   ),
 }));
 
@@ -414,5 +417,25 @@ describe('POST /auth/reset-password', () => {
       success: false,
       message: 'Reset link has already been used',
     });
+  });
+});
+
+describe('POST /refresh-token', () => {
+  it('reaches the controller with a token cookie', async () => {
+    const app = buildTestApp();
+    const res = await request(app)
+      .post('/auth/refresh-token')
+      .set('Cookie', ['refreshToken=some-token-value']);
+    expect(res.status).toBe(200);
+    expect(authController.refreshToken).toHaveBeenCalled();
+  });
+});
+describe('POST /logout', () => {
+  it('reaches the controller with a token cookie', async () => {
+    const app = buildTestApp();
+    const res = await request(app)
+      .post('/auth/logout')
+      .set('Cookie', ['refreshToken=some-token-value']);
+    expect(res.status).toBe(200);
   });
 });

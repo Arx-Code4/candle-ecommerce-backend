@@ -29,6 +29,7 @@ model User {
   cart                 Cart?
   orders               Order[]
   passwordResetTokens  PasswordResetToken[]
+  refreshTokens RefreshToken[]
   pendingCheckouts     PendingCheckout[]
 }
 
@@ -136,6 +137,27 @@ model PasswordResetToken {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+// new added model 
+//Why a DB row instead of just trusting the JWT signature?
+// a JWT is self-validating — anyone holding it is "logged in" until it expires, and there's no way to make it invalid early.
+// Storing a row lets us flip revokedAt and immediately kill that session 
+//(password change, logout, suspected theft) without waiting out the expiry.
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+
+
+user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+@@index([userId])
+}
+
 
 // INFERRED MODEL — not present in eco-4's entity list or ER diagram.
 // Reconstructed from eco-9.1.3's prose description of createChapaSession /

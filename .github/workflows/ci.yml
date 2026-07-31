@@ -16,9 +16,14 @@ jobs:
       FRONTEND_ORDER_CONFIRMATION_URL: ${{ secrets.FRONTEND_ORDER_CONFIRMATION_URL }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      JWT_EXPIRES_IN: ${{secrets.JWT_EXPIRES_IN}}
+      JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET}}
+      JWT_REFRESH_EXPIRES_IN: ${{secrets.JWT_REFRESH_EXPIRES_IN}}
+      ALLOW_TEST_AUTH_BYPASS: ${{secrets.ALLOW_TEST_AUTH_BYPASS}}
       CLOUDINARY_CLOUD_NAME: ${{secrets.CLOUDINARY_CLOUD_NAME}}
       CLOUDINARY_API_KEY: ${{secrets.CLOUDINARY_API_KEY}}
       CLOUDINARY_API_SECRET: ${{secrets.CLOUDINARY_API_SECRET}}
+      CORS_ORIGIN: ${{secrets.CORS_ORIGIN}}
 
     steps:
       - uses: actions/checkout@v4
