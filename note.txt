@@ -1,0 +1,6 @@
+1. ./src/server.ts:
+    - Inconsistency in handling prisma connection 
+2. ./src/config/db.ts
+    - Why ?? instead of ||
+3. ./src/config/env.ts
+    - Why console.error instead of logger.error
