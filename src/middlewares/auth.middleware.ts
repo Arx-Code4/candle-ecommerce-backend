@@ -16,7 +16,11 @@ const authMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => 
 
     const token = authHeader.split(' ')[1];
     // In test environment, accept a fake token for testing
-    if (env.NODE_ENV === 'test' && token === 'fake-valid-token') {
+    if (
+      env.NODE_ENV === 'test' &&
+      env.ALLOW_TEST_AUTH_BYPASS === 'true' &&
+      token === 'fake-valid-token'
+    ) {
       req.user = { id: 'test-user-id', role: 'customer' };
       return next();
     }

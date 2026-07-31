@@ -152,8 +152,12 @@ model RefreshToken {
   revokedAt DateTime?
   createdAt DateTime  @default(now())
 
-  user User @relation(fields: [userId], references: [id])
+
+
+user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+@@index([userId])
 }
+
 
 // INFERRED MODEL — not present in eco-4's entity list or ER diagram.
 // Reconstructed from eco-9.1.3's prose description of createChapaSession /

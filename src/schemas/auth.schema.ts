@@ -32,12 +32,12 @@ export const resetPasswordSchema = z.object({
 
 export const refreshTokenSchema = z.object({
   body: z.object({
-    refreshToken: z.string().min(1),
+    refreshToken: z.jwt(),
   }),
 });
 
 export const logoutSchema = z.object({
   body: z.object({
-    refreshToken: z.string().min(1),
+    refreshToken: z.jwt(),
   }),
 });

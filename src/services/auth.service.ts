@@ -18,22 +18,18 @@ import { sendPasswordResetEmail } from './notification.service.js';
 // ASSUMPTION: logger util not yet shared with me — adjust path/name if different.
 import logger from '../utils/logger.js';
 
-// Parsed from the same string that signs the refresh JWT's own `exp` claim
-// (see generateRefreshToken in jwt.ts, which passes env.JWT_REFRESH_EXPIRES_IN
-// straight to jsonwebtoken). Deriving the DB row's expiresAt from this same
-// value — instead of writing "7 days" out again as a separate number — means
-// the token's real expiry and the DB's revocation-check expiry can never
-// silently drift apart when someone changes JWT_REFRESH_EXPIRES_IN later.
+type SafeUser = Omit<User, 'password'>;
+
+// ms()'s TypeScript types only accept the narrow `StringValue` template-literal
+// union (e.g. '30d'), not the plain `string` zod gives env.JWT_REFRESH_EXPIRES_IN —
+// same reason jwt.ts casts env.JWT_EXPIRES_IN for jwt.sign()'s expiresIn option.
+// The cast doesn't change runtime behavior at all: ms() still returns `undefined`
+// if the string isn't actually a valid duration, which the check below catches.
 const REFRESH_TOKEN_TTL_MS: number | undefined = ms(env.JWT_REFRESH_EXPIRES_IN as ms.StringValue);
 
-//ms() can return undefined on a malformed string.
-// If JWT_REFRESH_EXPIRES_IN in .env is ever set to something ms can't parse (e.g. a typo like '7dd'), ms() returns undefined rather than throwing,
-//  and REFRESH_TOKEN_TTL_MS would silently become NaN all the way through Date.now() + NaN → an Invalid Date. Worth a guard:
-//so a bad .env value fails loudly at startup instead of quietly corrupting every refresh token's expiry.
 if (REFRESH_TOKEN_TTL_MS === undefined) {
   throw new Error('JWT_REFRESH_EXPIRES_IN is not a valid duration string');
 }
-type SafeUser = Omit<User, 'password'>;
 
 const stripPassword = (user: User): SafeUser => {
   const { password, ...safeUser } = user;
@@ -54,13 +50,21 @@ const tryAddPendingItem = async (userId: string, pendingVariantId?: string): Pro
   }
 };
 
+/**
+ * Issues a fresh access/refresh pair and persists a hash of the refresh
+ * token so it can later be looked up and revoked. Accepts an optional
+ * transaction client so refreshAccessToken can run this inside the same
+ * atomic unit as the old token's revocation — registerUser/loginUser call
+ * this with no second argument and just use the plain client.
+ */
 const issueTokenPair = async (
   user: Pick<User, 'id' | 'role'>,
+  client: Prisma.TransactionClient | typeof prisma = prisma,
 ): Promise<{ accessToken: string; refreshToken: string }> => {
   const accessToken = generateAccessToken({ id: user.id, role: user.role });
   const refreshToken = generateRefreshToken({ id: user.id });
 
-  await prisma.refreshToken.create({
+  await client.refreshToken.create({
     data: {
       userId: user.id,
       tokenHash: hashToken(refreshToken),
@@ -145,6 +149,64 @@ export const getUserById = async (id: string): Promise<SafeUser> => {
   return stripPassword(user);
 };
 
+/**
+ * Verifies a presented refresh token, atomically revokes it (only if it's
+ * still unrevoked and unexpired), and issues a brand-new pair — all inside
+ * one transaction. The atomic updateMany is what actually prevents two
+ * concurrent requests with the same token both succeeding (the earlier
+ * findUnique-then-update version had a race window between the two calls);
+ * wrapping it with issueTokenPair in $transaction means a failure while
+ * creating the new row rolls back the revocation too, so a mid-request
+ * failure can never leave the user with zero valid sessions.
+ */
+export const refreshAccessToken = async (
+  presentedToken: string,
+): Promise<{ accessToken: string; refreshToken: string }> => {
+  let payload: { id: string; type: string };
+  try {
+    payload = verifyRefreshToken(presentedToken);
+  } catch {
+    throw new ApiError(HTTP_STATUS.UNAUTHORIZED, 'Invalid or expired refresh token');
+  }
+
+  if (payload.type !== 'refresh') {
+    throw new ApiError(HTTP_STATUS.UNAUTHORIZED, 'Invalid or expired refresh token');
+  }
+
+  const tokenHash = hashToken(presentedToken);
+
+  return prisma.$transaction(async (tx) => {
+    const revokeResult = await tx.refreshToken.updateMany({
+      where: { tokenHash, revokedAt: null, expiresAt: { gt: new Date() } },
+      data: { revokedAt: new Date() },
+    });
+
+    if (revokeResult.count === 0) {
+      throw new ApiError(HTTP_STATUS.UNAUTHORIZED, 'Invalid or expired refresh token');
+    }
+
+    const user = await tx.user.findUnique({ where: { id: payload.id } });
+    if (!user) {
+      throw new ApiError(HTTP_STATUS.UNAUTHORIZED, 'Invalid or expired refresh token');
+    }
+
+    return issueTokenPair(user, tx);
+  });
+};
+
+/**
+ * Revokes a single refresh token. Uses updateMany (not update) so calling
+ * this with an already-revoked, expired, or nonexistent token is a no-op
+ * rather than a thrown error — logout should be idempotent.
+ */
+export const logoutUser = async (presentedToken: string): Promise<void> => {
+  const tokenHash = hashToken(presentedToken);
+  await prisma.refreshToken.updateMany({
+    where: { tokenHash, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+};
+
 export const requestPasswordReset = async (email: string): Promise<void> => {
   // Never throws for "email not found" (UC-06) — only an infrastructure
   // failure is caught and logged here, never surfaced to the caller.
@@ -198,59 +260,3 @@ export const resetPassword = async (token: string, newPassword: string): Promise
     });
   });
 };
-
-export const refreshAccessToken = async (
-  presentedToken: string,
-): Promise<{ accessToken: string; refreshToken: string }> => {
-  let payload: { id: string; type: string };
-  try {
-    payload = verifyRefreshToken(presentedToken);
-  } catch {
-    throw new ApiError(HTTP_STATUS.UNAUTHORIZED, 'Invalid or expired refresh token');
-  }
-
-  if (payload.type !== 'refresh') {
-    throw new ApiError(HTTP_STATUS.UNAUTHORIZED, 'Invalid or expired refresh token');
-  }
-
-  const tokenHash = hashToken(presentedToken);
-  const stored = await prisma.refreshToken.findUnique({ where: { tokenHash } });
-
-  if (!stored || stored.revokedAt || stored.expiresAt.getTime() < Date.now()) {
-    throw new ApiError(HTTP_STATUS.UNAUTHORIZED, 'Invalid or expired refresh token');
-  }
-
-  const user = await prisma.user.findUnique({ where: { id: payload.id } });
-  if (!user) {
-    throw new ApiError(HTTP_STATUS.UNAUTHORIZED, 'Invalid or expired refresh token');
-  }
-
-  await prisma.refreshToken.update({
-    where: { id: stored.id },
-    data: { revokedAt: new Date() },
-  });
-
-  return issueTokenPair(user);
-};
-
-export const logoutUser = async (presentedToken: string): Promise<void> => {
-  const tokenHash = hashToken(presentedToken);
-  await prisma.refreshToken.updateMany({
-    where: { tokenHash, revokedAt: null },
-    data: { revokedAt: new Date() },
-  });
-};
-
-//Why verifyRefreshToken isn't enough on its own, and we still hit the DB:
-// the JWT signature proves the token was issued by us and hasn't expired — but it can't tell us it hasn't been revoked.
-// That's the whole reason the DB table exists: stored.revokedAt/expiresAt checks are the actual enforcement of "this session is over," which a stateless JWT can never do by itself.
-
-//Why revoke-then-reissue ("rotation") on every refresh, instead of just handing back a new access token:
-//  rotating the refresh token on each use means each one is single-use.
-// If a refresh token is ever stolen and the legitimate user and the attacker both later try to use it, whoever uses it first gets a new valid pair — and the second attempt is presenting an already-revoked token, which is a clear signal of theft rather than a silent success.
-//  Without rotation, a stolen refresh token would just work quietly for 30 days.
-
-//Why updateMany for logout, not update:
-// update on a unique field throws if no row matches.
-// Logout should be idempotent — calling it twice, or with a garbage/already-expired token, should just succeed quietly rather than 500.
-// updateMany matches zero-or-more rows without erroring on zero.

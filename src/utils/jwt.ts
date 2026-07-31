@@ -27,11 +27,18 @@ export const generateRefreshToken = (payload: { id: string }): string => {
 };
 
 export const verifyAccessToken = (token: string): { id: string; role: string; type: string } => {
-  return jwt.verify(token, env.JWT_SECRET) as { id: string; role: string; type: string };
+  return jwt.verify(token, env.JWT_SECRET, { algorithms: ['HS256'] }) as {
+    id: string;
+    role: string;
+    type: string;
+  };
 };
 
 export const verifyRefreshToken = (token: string): { id: string; type: string } => {
-  return jwt.verify(token, env.JWT_REFRESH_SECRET) as { id: string; type: string };
+  return jwt.verify(token, env.JWT_REFRESH_SECRET, { algorithms: ['HS256'] }) as {
+    id: string;
+    type: string;
+  };
 };
 
 export const hashToken = (token: string): string =>
