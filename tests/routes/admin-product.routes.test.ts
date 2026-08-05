@@ -15,11 +15,13 @@ vi.mock('../../src/middlewares/upload.middleware.js', () => ({
 vi.mock('../../src/middlewares/cloudinaryupload.middleware.js', () => ({
   default: vi.fn((req, res, next) => next()),
 }));
+
 vi.mock('../../src/controllers/admin-product.controller.js', () => ({
   createProduct: vi.fn((req, res) => res.status(201).json({})),
   listAllProducts: vi.fn((req, res) => res.status(200).json({})),
   updateProduct: vi.fn((req, res) => res.status(200).json({})),
   updateProductStatus: vi.fn((req, res) => res.status(200).json({})),
+  getProductById: vi.fn((req, res) => res.status(200).json({})),
 }));
 
 import authMiddleware from '../../src/middlewares/auth.middleware.js';
@@ -164,5 +166,34 @@ describe('admin-product.routes', () => {
     expect(attachProductPhotos).toHaveBeenCalledTimes(1);
     expect(adminProductController.createProduct).toHaveBeenCalledTimes(1);
     expect(res.status).toBe(201);
+  });
+
+  it('GET /:id requires ADMIN role', async () => {
+    (adminOnly as ReturnType<typeof vi.fn>).mockImplementation((req, res, next) =>
+      next(new ApiError(403, 'Forbidden')),
+    );
+
+    const res = await request(app).get('/admin/products/product-1');
+
+    expect(res.status).toBe(403);
+    expect(adminProductController.getProductById).not.toHaveBeenCalled();
+  });
+
+  it('GET /:id requires auth', async () => {
+    (authMiddleware as ReturnType<typeof vi.fn>).mockImplementation((req, res, next) =>
+      next(new ApiError(401, 'No token provided')),
+    );
+
+    const res = await request(app).get('/admin/products/product-1');
+
+    expect(res.status).toBe(401);
+    expect(adminProductController.getProductById).not.toHaveBeenCalled();
+  });
+
+  it('GET /:id reaches the controller for an authenticated admin', async () => {
+    const res = await request(app).get('/admin/products/product-1');
+
+    expect(res.status).toBe(200);
+    expect(adminProductController.getProductById).toHaveBeenCalled();
   });
 });

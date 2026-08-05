@@ -4,6 +4,7 @@ import { Request, Response, NextFunction } from 'express';
 import * as adminProductService from '../../src/services/admin-product.service.js';
 import {
   createProduct,
+  getProductById,
   listAllProducts,
   updateProduct,
   updateProductStatus,
@@ -16,6 +17,7 @@ vi.mock('../../src/services/admin-product.service.js', () => ({
   getAllProducts: vi.fn(),
   updateProduct: vi.fn(),
   setProductPublishStatus: vi.fn(),
+  getProductById: vi.fn(),
 }));
 
 // Helper to build a mock Response object
@@ -399,5 +401,29 @@ describe('admin-product.controller', () => {
     await asyncHandler(updateProduct)(req, res, next);
 
     expect(next).toHaveBeenCalledWith(error);
+  });
+
+  describe('getProductById', () => {
+    it('calls adminProductService.getProductById with req.params.id and responds 200', async () => {
+      const req = { params: { id: 'product-1' }, body: {} } as unknown as Request;
+      const productResult = buildProductResult();
+      vi.mocked(adminProductService.getProductById).mockResolvedValue(productResult);
+
+      await getProductById(req, res, next);
+
+      expect(adminProductService.getProductById).toHaveBeenCalledWith('product-1');
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it('propagates a 404 service error via next', async () => {
+      const error = new ApiError(404, 'Product not found');
+      vi.mocked(adminProductService.getProductById).mockRejectedValue(error);
+      const req = { params: { id: 'missing-1' }, body: {} } as unknown as Request;
+
+      await asyncHandler(getProductById)(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(error);
+      expect(res.status).not.toHaveBeenCalled();
+    });
   });
 });

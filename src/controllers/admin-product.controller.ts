@@ -48,3 +48,11 @@ export const updateProductStatus = async (
     .status(HTTP_STATUS.OK)
     .json(new SuccessResponse(HTTP_STATUS.OK, 'Product status updated', result));
 };
+export const getProductById = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  const product = await adminProductService.getProductById(req.params.id as string);
+  res.status(HTTP_STATUS.OK).json(new SuccessResponse(HTTP_STATUS.OK, 'OK', product));
+};
