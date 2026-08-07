@@ -25,7 +25,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe.skip('listMyOrders', () => {
+describe('listMyOrders', () => {
   it('delegates to orderService.getOrdersByUser with req.user.id', async () => {
     const orders = [{ id: 'order-1', status: 'PROCESSING', totalAmount: '1500.00', itemCount: 2 }];
     (orderService.getOrdersByUser as any).mockResolvedValue(orders);
@@ -41,14 +41,14 @@ describe.skip('listMyOrders', () => {
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
         statusCode: 200,
-        message: 'OK',
+        message: 'Orders retrieved successfully',
         data: { items: orders },
       }),
     );
   });
 });
 
-describe.skip('getMyOrderById', () => {
+describe('getMyOrderById', () => {
   it('delegates to orderService.getOrderByIdForUser with req.user.id and req.params.id', async () => {
     const order = { id: 'order-1', status: 'PROCESSING', totalAmount: '1500.00', items: [] };
     (orderService.getOrderByIdForUser as any).mockResolvedValue(order);
@@ -65,7 +65,11 @@ describe.skip('getMyOrderById', () => {
     expect(orderService.getOrderByIdForUser).toHaveBeenCalledWith('user-1', 'order-1');
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ statusCode: 200, message: 'OK', data: order }),
+      expect.objectContaining({
+        statusCode: 200,
+        message: 'Order retrieved successfully',
+        data: order,
+      }),
     );
   });
 
