@@ -24,6 +24,7 @@ jobs:
       CLOUDINARY_API_KEY: ${{secrets.CLOUDINARY_API_KEY}}
       CLOUDINARY_API_SECRET: ${{secrets.CLOUDINARY_API_SECRET}}
       CORS_ORIGIN: ${{secrets.CORS_ORIGIN}}
+      FRONTEND_PASSWORD_RESET_URL: ${{secrets.FRONTEND_PASSWORD_RESET_URL}}
 
     steps:
       - uses: actions/checkout@v4
