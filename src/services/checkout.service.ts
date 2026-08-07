@@ -48,27 +48,15 @@ export const createChapaSession = async (
     );
   }
 
-  // Chapa requires a customer email; not present on the JWT payload or on
-  // CartWithItems, so it's looked up here.
-  // FIX: Use try-catch to handle missing prisma.user mock in tests
-  let email: string;
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { email: true },
-    });
-    if (!user) {
-      throw new ApiError(HTTP_STATUS.NOT_FOUND, 'User not found');
-    }
-    email = user.email;
-  } catch (error) {
-    // In test environment, if prisma.user is not mocked, use a fallback
-    if (env.NODE_ENV === 'test') {
-      logger.warn('prisma.user not mocked in test, using fallback email');
-      email = 'test@example.com';
-    } else {
-      throw error;
-    }
+  // Chapa requires a customer email; it isn't present on the JWT payload
+  // (req.user only carries id/role) or on CartWithItems, so it's looked
+  // up here.
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true },
+  });
+  if (!user) {
+    throw new ApiError(HTTP_STATUS.NOT_FOUND, 'User not found');
   }
 
   const txRef = `TX-${randomUUID()}`;
@@ -98,7 +86,7 @@ export const createChapaSession = async (
 
   const { checkoutUrl } = await chapa.initializeTransaction({
     amount: cart.total,
-    email: email,
+    email: user.email,
     txRef,
     returnUrl: env.FRONTEND_ORDER_CONFIRMATION_URL,
   });
@@ -115,11 +103,8 @@ export const confirmChapaPayment = async (
     return { orderId: existingOrder.id, created: false };
   }
 
-  if (chapaStatus !== 'success') {
-    logger.info({ txRef, chapaStatus }, 'Chapa payment not successful, no order created');
-    return { created: false };
-  }
-
+  // Fetched once, up front, regardless of status: both the "unknown txRef"
+  // 404 and the failed/cancelled email path need this row.
   const pending = await prisma.pendingCheckout.findUnique({
     where: { txRef },
     include: { user: { select: { email: true } } },
@@ -128,7 +113,25 @@ export const confirmChapaPayment = async (
     throw new ApiError(HTTP_STATUS.NOT_FOUND, 'Unknown transaction reference');
   }
 
-  // NEW: verify the actually-paid amount against what we expected, before
+  if (chapaStatus !== 'success') {
+    logger.info({ txRef, chapaStatus }, 'Chapa payment not successful, no order created');
+
+    // A failed notification send must never change the outcome we report
+    // back to the webhook caller.
+    try {
+      await notificationService.sendPaymentFailedEmail(
+        txRef,
+        pending.user?.email ?? '',
+        chapaStatus,
+      );
+    } catch (error) {
+      logger.error(error, 'sendPaymentFailedEmail threw unexpectedly');
+    }
+
+    return { created: false };
+  }
+
+  // Verify the actually-paid amount against what we expected, before
   // touching the DB transaction. Even a 0.01 mismatch is rejected — this
   // guards against tampered/stale webhook payloads misreporting the amount.
   const verification = await chapa.verifyTransaction(txRef);

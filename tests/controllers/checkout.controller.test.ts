@@ -31,7 +31,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe.skip('initiateCheckout', () => {
+describe('initiateCheckout', () => {
   it('delegates to checkoutService.createChapaSession with user id and body', async () => {
     const shipping = {
       shippingName: 'Abebe',
@@ -59,7 +59,7 @@ describe.skip('initiateCheckout', () => {
   });
 });
 
-describe.skip('handleChapaWebhook', () => {
+describe('handleChapaWebhook', () => {
   const rawBody = Buffer.from(JSON.stringify({ status: 'success', tx_ref: 'tx-123' }));
 
   function makeWebhookReq(overrides: Partial<Request> = {}): Request {

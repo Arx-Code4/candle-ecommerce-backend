@@ -60,7 +60,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe.skip('GET /orders', () => {
+describe('GET /orders', () => {
   it('requires auth — 401 without a token, controller never invoked', async () => {
     const app = buildTestApp();
 
@@ -81,7 +81,7 @@ describe.skip('GET /orders', () => {
   });
 });
 
-describe.skip('GET /orders/:id', () => {
+describe('GET /orders/:id', () => {
   it('validates UUID format and returns 400 for malformed id', async () => {
     const app = buildTestApp();
 
@@ -90,7 +90,8 @@ describe.skip('GET /orders/:id', () => {
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({
       statusCode: 400,
-      message: expect.stringContaining('Invalid ID format'),
+      message: 'Validation failed',
+      errors: expect.arrayContaining([expect.stringContaining('Invalid ID format')]),
     });
     expect(orderController.getMyOrderById).not.toHaveBeenCalled();
   });
@@ -116,7 +117,7 @@ describe.skip('GET /orders/:id', () => {
   });
 });
 
-describe.skip('authMiddleware applies to every route in this router', () => {
+describe('authMiddleware applies to every route in this router', () => {
   it('both GET / and GET /:id pass auth with mocked middleware', async () => {
     const app = buildTestApp();
 
