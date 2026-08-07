@@ -260,3 +260,15 @@ export const setProductPublishStatus = async (
     throw error;
   }
 };
+export const getProductById = async (id: string): Promise<ProductDetail> => {
+  const product = await prisma.product.findUnique({
+    where: { id },
+    include: { photos: true, variants: true },
+  });
+
+  if (!product) {
+    throw new ApiError(HTTP_STATUS.NOT_FOUND, 'Product not found');
+  }
+
+  return toProductDetail(product);
+};

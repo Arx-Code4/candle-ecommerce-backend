@@ -9,6 +9,7 @@ import {
   ProductDetail,
   ProductPhotoDetail,
   ProductVariantDetail,
+  getProductById,
 } from '../../src/services/admin-product.service.js';
 import { prisma } from '../../src/config/db.js';
 import ApiError from '../../src/utils/ApiError.js';
@@ -405,6 +406,29 @@ describe('admin-product.service', () => {
         statusCode: 404,
         message: 'Product not found',
       });
+    });
+  });
+});
+describe('getProductById', () => {
+  it('returns the product detail for an existing product, regardless of publish status', async () => {
+    const draftProduct = buildPrismaProductWithRelations({ isPublished: false });
+    vi.mocked(prisma.product.findUnique).mockResolvedValue(draftProduct);
+
+    const result = await getProductById('product-1');
+
+    expect(prisma.product.findUnique).toHaveBeenCalledWith({
+      where: { id: 'product-1' },
+      include: { photos: true, variants: true },
+    });
+    expect(result).toEqual(buildProductDetail({ isPublished: false }));
+  });
+
+  it('throws a 404 ApiError when the product does not exist', async () => {
+    vi.mocked(prisma.product.findUnique).mockResolvedValue(null);
+
+    await expect(getProductById('missing')).rejects.toMatchObject({
+      statusCode: 404,
+      message: 'Product not found',
     });
   });
 });

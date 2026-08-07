@@ -16,7 +16,7 @@ import {
 } from '../controllers/admin-product.controller.js';
 import productPhotosUpload from '../middlewares/upload.middleware.js';
 import attachProductPhotos from '../middlewares/cloudinaryupload.middleware.js';
-
+import { getProductById } from '../controllers/admin-product.controller.js';
 const router = Router();
 
 router.post(
@@ -49,4 +49,5 @@ router.patch(
   asyncHandler(updateProductStatus),
 );
 
+router.get('/:id', authMiddleware, adminOnly, asyncHandler(getProductById));
 export default router;
