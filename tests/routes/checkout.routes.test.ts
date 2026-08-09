@@ -30,14 +30,12 @@ vi.mock('../../src/middlewares/auth.middleware.js', () => ({
 // would throw at runtime instead of failing meaningfully.
 vi.mock('../../src/controllers/checkout.controller.js', () => ({
   initiateCheckout: vi.fn(async (req, res) =>
-    res
-      .status(200)
-      .json({
-        statusCode: 200,
-        success: true,
-        message: 'Checkout session created',
-        data: { chapaCheckoutUrl: 'https://checkout.chapa.co/abc', txRef: 'tx-123' },
-      }),
+    res.status(200).json({
+      statusCode: 200,
+      success: true,
+      message: 'Checkout session created',
+      data: { chapaCheckoutUrl: 'https://checkout.chapa.co/abc', txRef: 'tx-123' },
+    }),
   ),
   handleChapaWebhook: vi.fn(async (req, res) =>
     res.status(200).json({ statusCode: 200, success: true, message: 'Webhook received' }),
@@ -92,7 +90,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe.skip('POST /checkout', () => {
+describe('POST /checkout', () => {
   it('requires auth — 401 without a token, controller never invoked', async () => {
     const app = buildTestApp();
 
@@ -122,7 +120,7 @@ describe.skip('POST /checkout', () => {
   it('validates shipping fields — rejects missing fields', async () => {
     const app = buildTestApp();
 
-    const res = await makeAuthedRequest(app).post('/checkout').send({
+    const res = await makeAuthedRequest(app, 'post', '/checkout').send({
       shippingName: 'Abebe',
       // Missing shippingPhone and shippingAddress
     });
@@ -150,7 +148,7 @@ describe.skip('POST /checkout', () => {
 
     const app = buildTestApp();
 
-    const res = await makeAuthedRequest(app).post('/checkout').send({
+    const res = await makeAuthedRequest(app, 'post', '/checkout').send({
       shippingName: 'Abebe',
       shippingPhone: '+251911223344',
       shippingAddress: 'Addis Ababa',
@@ -173,7 +171,7 @@ describe.skip('POST /checkout', () => {
 
     const app = buildTestApp();
 
-    const res = await makeAuthedRequest(app).post('/checkout').send({
+    const res = await makeAuthedRequest(app, 'post', '/checkout').send({
       shippingName: 'Abebe',
       shippingPhone: '+251911223344',
       shippingAddress: 'Addis Ababa',
@@ -189,7 +187,7 @@ describe.skip('POST /checkout', () => {
   });
 });
 
-describe.skip('POST /payments/chapa/webhook', () => {
+describe('POST /payments/chapa/webhook', () => {
   it('has no auth middleware — reaches the controller without an Authorization header', async () => {
     const app = buildTestApp();
 
@@ -259,7 +257,7 @@ describe.skip('POST /payments/chapa/webhook', () => {
   });
 });
 
-describe.skip('authMiddleware is applied per-route, not router-wide', () => {
+describe('authMiddleware is applied per-route, not router-wide', () => {
   it('/checkout is blocked without auth, but the webhook route is not', async () => {
     const app = buildTestApp();
 

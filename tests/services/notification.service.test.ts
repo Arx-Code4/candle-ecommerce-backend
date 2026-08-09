@@ -1,12 +1,14 @@
 // tests/services/notification.service.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { Prisma } from '@prisma/client';
 import {
   sendOrderConfirmationEmail,
   sendShippingNotificationEmail,
+  sendPaymentFailedEmail,
+  type OrderWithItems,
 } from '../../src/services/notification.service.js';
 import { sendMail } from '../../src/utils/mailer.js';
 import logger from '../../src/utils/logger.js';
-import ApiError from '../../src/utils/ApiError.js';
 
 vi.mock('../../src/utils/mailer.js', () => ({
   sendMail: vi.fn(),
@@ -20,16 +22,30 @@ vi.mock('../../src/utils/logger.js', () => ({
   },
 }));
 
-// Factory function for type-safe mock order data
-function buildMockOrder(overrides: Partial<any> = {}) {
+// Factory function for type-safe mock order data — matches the real
+// Prisma Order & OrderItem shape exactly, so overrides stay type-checked.
+function buildMockOrder(overrides: Partial<OrderWithItems> = {}): OrderWithItems {
   return {
     id: 'order-1',
-    totalAmount: '1500.00',
+    userId: 'user-1',
+    status: 'PROCESSING',
+    chapaTxRef: 'tx-order-1',
+    totalAmount: new Prisma.Decimal('1500.00'),
+    shippingName: 'Abebe',
+    shippingPhone: '+251911223344',
+    shippingAddress: 'Addis Ababa',
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     items: [
       {
-        name: 'Vanilla Candle',
+        id: 'item-1',
+        orderId: 'order-1',
+        productVariantId: 'variant-1',
+        productNameSnapshot: 'Vanilla Candle',
+        scentSnapshot: 'Vanilla',
+        sizeSnapshot: 'Medium',
+        unitPriceSnapshot: new Prisma.Decimal('750.00'),
         quantity: 2,
-        unitPriceSnapshot: '750.00',
       },
     ],
     ...overrides,
@@ -40,9 +56,9 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe.skip('sendOrderConfirmationEmail', () => {
+describe('sendOrderConfirmationEmail', () => {
   it('sends successfully, with content reflecting the order items', async () => {
-    vi.mocked(sendMail).mockResolvedValue({ messageId: 'abc123' });
+    vi.mocked(sendMail).mockResolvedValue(undefined);
     const mockOrder = buildMockOrder();
 
     await sendOrderConfirmationEmail(mockOrder, 'jane@example.com');
@@ -56,8 +72,8 @@ describe.skip('sendOrderConfirmationEmail', () => {
   });
 
   it('sends email with order total in the content', async () => {
-    vi.mocked(sendMail).mockResolvedValue({ messageId: 'abc123' });
-    const mockOrder = buildMockOrder({ totalAmount: '2500.00' });
+    vi.mocked(sendMail).mockResolvedValue(undefined);
+    const mockOrder = buildMockOrder({ totalAmount: new Prisma.Decimal('2500.00') });
 
     await sendOrderConfirmationEmail(mockOrder, 'jane@example.com');
 
@@ -78,11 +94,8 @@ describe.skip('sendOrderConfirmationEmail', () => {
     ).resolves.toBeUndefined();
 
     expect(logger.error).toHaveBeenCalled();
-    expect(logger.error).toHaveBeenCalledWith(
-      expect.objectContaining({
-        message: expect.stringContaining('SMTP connection refused'),
-      }),
-    );
+    // logger.error(error, message) — Pino-style: error object first, message string second
+    expect(logger.error).toHaveBeenCalledWith(sendError, expect.stringContaining(mockOrder.id));
   });
 
   it('does not throw or crash checkout when customerEmail is empty', async () => {
@@ -90,29 +103,30 @@ describe.skip('sendOrderConfirmationEmail', () => {
 
     await expect(sendOrderConfirmationEmail(mockOrder, '')).resolves.toBeUndefined();
 
-    // Should log a warning for empty email
     expect(logger.warn).toHaveBeenCalled();
     expect(vi.mocked(sendMail)).not.toHaveBeenCalled();
   });
 
   it('does not send email when customerEmail is empty, just logs and returns', async () => {
-    vi.mocked(sendMail).mockResolvedValue({ messageId: 'abc123' });
+    vi.mocked(sendMail).mockResolvedValue(undefined);
     const mockOrder = buildMockOrder();
 
     await sendOrderConfirmationEmail(mockOrder, '');
 
     expect(vi.mocked(sendMail)).not.toHaveBeenCalled();
+    // logger.warn({ orderId }, message) — Pino-style: meta object first, message string second
     expect(logger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({
-        message: expect.stringContaining('Empty customer email'),
-      }),
+      { orderId: mockOrder.id },
+      expect.stringContaining('missing customer email'),
     );
   });
 
   it('does not throw when email is undefined', async () => {
     const mockOrder = buildMockOrder();
 
-    await expect(sendOrderConfirmationEmail(mockOrder, undefined as any)).resolves.toBeUndefined();
+    await expect(
+      sendOrderConfirmationEmail(mockOrder, undefined as unknown as string),
+    ).resolves.toBeUndefined();
 
     expect(logger.warn).toHaveBeenCalled();
     expect(vi.mocked(sendMail)).not.toHaveBeenCalled();
@@ -125,17 +139,13 @@ describe.skip('sendOrderConfirmationEmail', () => {
 
     await sendOrderConfirmationEmail(mockOrder, 'jane@example.com');
 
-    expect(logger.error).toHaveBeenCalledWith(
-      expect.objectContaining({
-        orderId: 'order-123',
-      }),
-    );
+    expect(logger.error).toHaveBeenCalledWith(sendError, expect.stringContaining('order-123'));
   });
 });
 
-describe.skip('sendShippingNotificationEmail', () => {
+describe('sendShippingNotificationEmail', () => {
   it('sends successfully', async () => {
-    vi.mocked(sendMail).mockResolvedValue({ messageId: 'abc123' });
+    vi.mocked(sendMail).mockResolvedValue(undefined);
     const mockOrder = buildMockOrder();
 
     await sendShippingNotificationEmail(mockOrder, 'jane@example.com');
@@ -149,14 +159,14 @@ describe.skip('sendShippingNotificationEmail', () => {
   });
 
   it('sends shipping notification with order details', async () => {
-    vi.mocked(sendMail).mockResolvedValue({ messageId: 'abc123' });
+    vi.mocked(sendMail).mockResolvedValue(undefined);
     const mockOrder = buildMockOrder({ id: 'order-456' });
 
     await sendShippingNotificationEmail(mockOrder, 'jane@example.com');
 
     expect(vi.mocked(sendMail)).toHaveBeenCalledWith(
       expect.objectContaining({
-        html: expect.stringContaining('order-456'),
+        subject: expect.stringContaining('order-456'),
       }),
     );
   });
@@ -174,7 +184,7 @@ describe.skip('sendShippingNotificationEmail', () => {
   });
 
   it('does not send email when customerEmail is empty', async () => {
-    vi.mocked(sendMail).mockResolvedValue({ messageId: 'abc123' });
+    vi.mocked(sendMail).mockResolvedValue(undefined);
     const mockOrder = buildMockOrder();
 
     await sendShippingNotificationEmail(mockOrder, '');
@@ -187,7 +197,7 @@ describe.skip('sendShippingNotificationEmail', () => {
     const mockOrder = buildMockOrder();
 
     await expect(
-      sendShippingNotificationEmail(mockOrder, undefined as any),
+      sendShippingNotificationEmail(mockOrder, undefined as unknown as string),
     ).resolves.toBeUndefined();
 
     expect(logger.warn).toHaveBeenCalled();
@@ -201,10 +211,64 @@ describe.skip('sendShippingNotificationEmail', () => {
 
     await sendShippingNotificationEmail(mockOrder, 'jane@example.com');
 
-    expect(logger.error).toHaveBeenCalledWith(
+    expect(logger.error).toHaveBeenCalledWith(sendError, expect.stringContaining('order-789'));
+  });
+});
+
+describe('sendPaymentFailedEmail', () => {
+  it('sends a failed-payment email with the txRef', async () => {
+    vi.mocked(sendMail).mockResolvedValue(undefined);
+
+    await sendPaymentFailedEmail('tx-123', 'jane@example.com', 'failed');
+
+    expect(vi.mocked(sendMail)).toHaveBeenCalledWith(
       expect.objectContaining({
-        orderId: 'order-789',
+        to: 'jane@example.com',
+        subject: expect.stringContaining('Failed'),
+        html: expect.stringContaining('tx-123'),
       }),
     );
+  });
+
+  it('sends a cancelled-payment email with distinct subject/copy from failed', async () => {
+    vi.mocked(sendMail).mockResolvedValue(undefined);
+
+    await sendPaymentFailedEmail('tx-456', 'jane@example.com', 'cancelled');
+
+    expect(vi.mocked(sendMail)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'jane@example.com',
+        subject: expect.stringContaining('Cancelled'),
+      }),
+    );
+  });
+
+  it('does not send when customerEmail is empty, just logs and returns', async () => {
+    await sendPaymentFailedEmail('tx-123', '', 'failed');
+
+    expect(vi.mocked(sendMail)).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      { txRef: 'tx-123' },
+      expect.stringContaining('missing customer email'),
+    );
+  });
+
+  it('does not throw when email is undefined', async () => {
+    await expect(
+      sendPaymentFailedEmail('tx-123', undefined as unknown as string, 'failed'),
+    ).resolves.toBeUndefined();
+
+    expect(vi.mocked(sendMail)).not.toHaveBeenCalled();
+  });
+
+  it('resolves void and logs when the send fails, rather than throwing', async () => {
+    const sendError = new Error('SMTP connection refused');
+    vi.mocked(sendMail).mockRejectedValue(sendError);
+
+    await expect(
+      sendPaymentFailedEmail('tx-123', 'jane@example.com', 'failed'),
+    ).resolves.toBeUndefined();
+
+    expect(logger.error).toHaveBeenCalledWith(sendError, expect.stringContaining('tx-123'));
   });
 });

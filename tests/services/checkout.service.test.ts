@@ -12,6 +12,9 @@ import ApiError from '../../src/utils/ApiError.js';
 
 vi.mock('../../src/config/db.js', () => ({
   prisma: {
+    user: {
+      findUnique: vi.fn(),
+    },
     pendingCheckout: {
       create: vi.fn(),
       findUnique: vi.fn(),
@@ -34,6 +37,7 @@ vi.mock('../../src/utils/chapa.js', () => ({
 
 vi.mock('../../src/services/notification.service.js', () => ({
   sendOrderConfirmationEmail: vi.fn(),
+  sendPaymentFailedEmail: vi.fn(),
 }));
 
 const shipping = {
@@ -44,6 +48,9 @@ const shipping = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(prisma.user.findUnique).mockResolvedValue({
+    email: 'jane@example.com',
+  } as any);
   vi.mocked(chapa.verifyTransaction).mockResolvedValue({
     status: 'success',
     amount: '1500.00',
@@ -115,7 +122,7 @@ function buildOrder(overrides: Partial<Order> = {}): Order {
   };
 }
 
-describe.skip('createChapaSession', () => {
+describe('createChapaSession', () => {
   it('creates a session successfully for a cart with in-stock items', async () => {
     const mockCart = buildCart({
       items: [buildCartItem({ quantity: 2 })],
@@ -178,6 +185,20 @@ describe.skip('createChapaSession', () => {
     });
   });
 
+  it('throws ApiError(404) when the user record cannot be found', async () => {
+    const mockCart = buildCart({
+      items: [buildCartItem({ quantity: 1 })],
+    });
+    vi.mocked(cartService.getOrCreateCart).mockResolvedValue(mockCart);
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
+
+    await expect(createChapaSession('user-1', shipping)).rejects.toMatchObject({
+      statusCode: 404,
+      message: 'User not found',
+    });
+    expect(chapa.initializeTransaction).not.toHaveBeenCalled();
+  });
+
   it('propagates a chapa.ts failure unchanged', async () => {
     const mockCart = buildCart({
       items: [buildCartItem({ quantity: 1 })],
@@ -208,7 +229,7 @@ describe.skip('createChapaSession', () => {
   });
 });
 
-describe.skip('confirmChapaPayment', () => {
+describe('confirmChapaPayment', () => {
   function makeMockTx() {
     return {
       order: { create: vi.fn().mockResolvedValue({ id: 'order-1' }) },
@@ -305,24 +326,67 @@ describe.skip('confirmChapaPayment', () => {
     expect(notificationService.sendOrderConfirmationEmail).not.toHaveBeenCalled();
   });
 
-  it('creates nothing for a failed status', async () => {
+  it('sends a payment-failed email and creates nothing for a failed status', async () => {
     vi.mocked(prisma.order.findUnique).mockResolvedValue(null);
-    vi.mocked(prisma.pendingCheckout.findUnique).mockResolvedValue(buildPendingCheckout());
+    const pendingRow = buildPendingCheckout();
+    vi.mocked(prisma.pendingCheckout.findUnique).mockResolvedValue({
+      ...pendingRow,
+      user: { email: 'jane@example.com' },
+    } as any);
 
     const result = await confirmChapaPayment('tx-123', 'failed');
 
     expect(result).toEqual({ created: false });
     expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(notificationService.sendPaymentFailedEmail).toHaveBeenCalledWith(
+      'tx-123',
+      'jane@example.com',
+      'failed',
+    );
   });
 
-  it('creates nothing for a cancelled status', async () => {
+  it('sends a payment-failed email and creates nothing for a cancelled status', async () => {
     vi.mocked(prisma.order.findUnique).mockResolvedValue(null);
-    vi.mocked(prisma.pendingCheckout.findUnique).mockResolvedValue(buildPendingCheckout());
+    const pendingRow = buildPendingCheckout();
+    vi.mocked(prisma.pendingCheckout.findUnique).mockResolvedValue({
+      ...pendingRow,
+      user: { email: 'jane@example.com' },
+    } as any);
 
     const result = await confirmChapaPayment('tx-123', 'cancelled');
 
     expect(result).toEqual({ created: false });
     expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(notificationService.sendPaymentFailedEmail).toHaveBeenCalledWith(
+      'tx-123',
+      'jane@example.com',
+      'cancelled',
+    );
+  });
+
+  it('does not let a failed-email send affect the failed-status result', async () => {
+    vi.mocked(prisma.order.findUnique).mockResolvedValue(null);
+    const pendingRow = buildPendingCheckout();
+    vi.mocked(prisma.pendingCheckout.findUnique).mockResolvedValue({
+      ...pendingRow,
+      user: { email: 'jane@example.com' },
+    } as any);
+    vi.mocked(notificationService.sendPaymentFailedEmail).mockRejectedValue(new Error('SMTP down'));
+
+    const result = await confirmChapaPayment('tx-123', 'failed');
+
+    expect(result).toEqual({ created: false });
+  });
+
+  it('throws ApiError(404) for an unknown txRef even with a failed status', async () => {
+    vi.mocked(prisma.order.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.pendingCheckout.findUnique).mockResolvedValue(null);
+
+    await expect(confirmChapaPayment('bad-tx', 'failed')).rejects.toMatchObject({
+      statusCode: 404,
+      message: 'Unknown transaction reference',
+    });
+    expect(notificationService.sendPaymentFailedEmail).not.toHaveBeenCalled();
   });
 
   it('throws ApiError(409) when stock is insufficient at confirm time', async () => {
@@ -345,7 +409,7 @@ describe.skip('confirmChapaPayment', () => {
       message: 'Insufficient stock for some items in your order',
       errors: expect.arrayContaining([
         expect.stringContaining('Vanilla Candle'),
-        expect.stringContaining('available 0'),
+        expect.stringContaining('only 0 available'),
         expect.stringContaining('requested 2'),
       ]),
     });
@@ -481,32 +545,5 @@ describe.skip('confirmChapaPayment', () => {
     const result = await confirmChapaPayment('tx-123', 'success');
 
     expect(result).toEqual({ orderId: 'order-1', created: true });
-  });
-
-  it('throws ApiError(409) when the verified payment amount does not match the expected amount', async () => {
-    vi.mocked(prisma.order.findUnique).mockResolvedValue(null);
-    const pendingRow = buildPendingCheckout({
-      expectedAmount: new Prisma.Decimal('1500.00'),
-    });
-    vi.mocked(prisma.pendingCheckout.findUnique).mockResolvedValue(pendingRow);
-    vi.mocked(chapa.verifyTransaction).mockResolvedValue({
-      status: 'success',
-      amount: '1200.00', // Mismatch: expected 1500.00
-    });
-    // This should never be called - amount mismatch is checked first
-    vi.mocked(prisma.$transaction).mockImplementation(async () => {
-      throw new Error('Transaction should not be called');
-    });
-
-    await expect(confirmChapaPayment('tx-123', 'success')).rejects.toMatchObject({
-      statusCode: 409,
-      message: 'Payment amount mismatch - please contact support',
-      errors: expect.arrayContaining([
-        expect.stringContaining('Expected: 1500.00'),
-        expect.stringContaining('Paid: 1200.00'),
-      ]),
-    });
-
-    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });

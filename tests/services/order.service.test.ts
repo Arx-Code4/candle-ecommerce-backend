@@ -49,7 +49,7 @@ function buildOrderItem(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe.skip('getOrdersByUser', () => {
+describe('getOrdersByUser', () => {
   it("returns the user's orders in the expected shape", async () => {
     const mockOrders = [
       { ...buildOrder({ id: 'order-1', status: 'PROCESSING' }), _count: { items: 2 } },
@@ -86,7 +86,7 @@ describe.skip('getOrdersByUser', () => {
   });
 });
 
-describe.skip('getOrderByIdForUser', () => {
+describe('getOrderByIdForUser', () => {
   it('returns order detail built from OrderItem snapshot fields', async () => {
     const orderRecord = {
       ...buildOrder({ id: 'order-1', userId: 'user-1' }),

@@ -16,7 +16,7 @@ beforeEach(() => {
   vi.resetModules(); // Add this
 });
 
-describe.skip('sendMail', () => {
+describe('sendMail', () => {
   const message = {
     to: 'jane@example.com',
     subject: 'Order Confirmation',
