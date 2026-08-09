@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../config/db.js';
 import ApiError from '../utils/ApiError.js';
 import { HTTP_STATUS } from '../constants/index.js';
+import { toPriceString } from '../utils/price.js';
 
 type ProductVariant = {
   id: string;
@@ -13,6 +14,8 @@ type ProductVariant = {
 type ProductSummary = {
   id: string;
   name: string;
+  price: string; // ADD — toPriceString(product.price), same helper cart.service.ts already uses
+  primaryPhotoUrl: string | null; // ADD
   variants: ProductVariant[];
 };
 
@@ -43,7 +46,7 @@ export async function getPublishedProducts(filters: {
   const [rows, total] = await Promise.all([
     prisma.product.findMany({
       where,
-      include: { variants: true },
+      include: { variants: true, photos: true }, // was: { variants: true }
       skip: (page - 1) * limit,
       take: limit,
     }),
@@ -53,6 +56,9 @@ export async function getPublishedProducts(filters: {
   const items: ProductSummary[] = rows.map((product) => ({
     id: product.id,
     name: product.name,
+    price: toPriceString(Number(product.price)), // ADD — import toPriceString from '../utils/price.js' (already used in cart.service.ts)
+    primaryPhotoUrl:
+      [...(product.photos ?? [])].sort((a, b) => a.sortOrder - b.sortOrder)[0]?.url ?? null,
     variants: product.variants.map((variant) => ({
       id: variant.id,
       scent: variant.scent,
@@ -77,6 +83,9 @@ export async function getPublishedProductById(id: string): Promise<ProductDetail
   return {
     id: product.id,
     name: product.name,
+    price: toPriceString(Number(product.price)),
+    primaryPhotoUrl:
+      [...(product.photos ?? [])].sort((a, b) => a.sortOrder - b.sortOrder)[0]?.url ?? null,
     variants: product.variants.map((variant) => ({
       id: variant.id,
       scent: variant.scent,

@@ -26,6 +26,8 @@ export const addCartItem = asyncHandler(async (req: AuthRequest, res: Response) 
     new SuccessResponse(201, message, {
       cartItem: result.cartItem,
       cartTotal: result.cartTotal,
+      wasCapped: result.wasCapped, // ADD
+      cappedTo: result.cappedTo, // ADD
     }),
   );
 });
@@ -45,9 +47,11 @@ export const updateCartItem = asyncHandler(async (req: AuthRequest, res: Respons
   }
 
   res.status(200).json(
-    new SuccessResponse(200, message, {
+    new SuccessResponse(201, message, {
       cartItem: result.cartItem,
       cartTotal: result.cartTotal,
+      wasCapped: result.wasCapped, // ADD
+      cappedTo: result.cappedTo, // ADD
     }),
   );
 });
