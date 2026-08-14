@@ -97,6 +97,7 @@ describe('getPublishedProducts', () => {
     const mockProducts = [
       {
         ...buildProduct({ id: 'p1' }),
+        photos: [buildProductPhoto({ url: 'a.jpg' })], // ADD — was missing entirely
         variants: [
           buildProductVariant({ id: '1', scent: 'vanilla', size: 'large', stock: 5 }),
           buildProductVariant({ id: '2', scent: 'lavender', size: 'small', stock: 3 }),
@@ -148,20 +149,23 @@ describe('getPublishedProducts', () => {
 describe('getPublishedProductById', () => {
   it('resolves the full detail shape when the product exists and is published', async () => {
     const mockProduct = {
-      ...buildProduct({ id: 'p1', name: 'Candle', isPublished: true }),
+      ...buildProduct({
+        id: 'p1',
+        name: 'Candle',
+        isPublished: true,
+        price: new Prisma.Decimal('19.99'),
+      }),
       photos: [buildProductPhoto({ url: 'a.jpg' })],
       variants: [buildProductVariant({ id: 'v1', scent: 'vanilla', size: 'large', stock: 5 })],
     };
     vi.mocked(prisma.product.findFirst).mockResolvedValue(mockProduct);
-
     const result = await getPublishedProductById('p1');
 
-    // ProductDetail's real declared shape: { id, name, variants, photos: string[] }.
-    // No description/price/isPublished/createdAt/updatedAt, and photos are
-    // plain URL strings, not the raw ProductPhoto relation objects.
     expect(result).toEqual({
       id: 'p1',
       name: 'Candle',
+      price: '19.99',
+      primaryPhotoUrl: 'a.jpg',
       variants: [{ id: 'v1', scent: 'vanilla', size: 'large', stock: 5 }],
       photos: ['a.jpg'],
     });
