@@ -15,7 +15,11 @@ const validateListQuery = (req: Request, res: Response, next: NextFunction): voi
   }
   // req.query is a getter-only property in Express 5 (assigning to it throws),
   // so the parsed/coerced values are merged into the existing object in place.
-  Object.assign(req.query, result.data.query);
+  Object.defineProperty(req, 'query', {
+    value: result.data.query,
+    writable: true,
+    configurable: true,
+  });
   next();
 };
 

@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../config/db.js';
 import ApiError from '../utils/ApiError.js';
 import { HTTP_STATUS } from '../constants/index.js';
+import { toPriceString } from '../utils/price.js';
 
 export interface ProductPhotoDetail {
   id: string;
@@ -20,7 +21,7 @@ export interface ProductDetail {
   id: string;
   name: string;
   description: string;
-  price: number;
+  price: string;
   isPublished: boolean;
   photos: ProductPhotoDetail[];
   variants: ProductVariantDetail[];
@@ -102,7 +103,7 @@ const toProductDetail = (product: ProductWithRelations): ProductDetail => {
     id: product.id,
     name: product.name,
     description: product.description,
-    price: Number(product.price),
+    price: toPriceString(Number(product.price)),
     isPublished: product.isPublished,
     photos: [...photos]
       .sort((a, b) => a.sortOrder - b.sortOrder)

@@ -77,7 +77,7 @@ function buildProductDetail(overrides: Partial<ProductDetail> = {}): ProductDeta
     id: 'product-1',
     name: 'Vanilla Bliss',
     description: 'A warm vanilla candle',
-    price: 19.99,
+    price: '19.99',
     isPublished: false,
     photos: [{ id: 'photo-1', url: 'https://example.com/photo.jpg', sortOrder: 0 }],
     variants: [{ id: 'variant-1', scent: 'Vanilla', size: 'Large', stock: 10 }],
@@ -99,7 +99,7 @@ describe('admin-product.service', () => {
       const result = await createProduct({
         name: productDetail.name,
         description: productDetail.description,
-        price: productDetail.price,
+        price: Number(productDetail.price),
         photos: [{ url: productDetail.photos[0].url }],
         variants: [{ scent: 'Vanilla', size: 'Large', stock: 10 }],
       });
