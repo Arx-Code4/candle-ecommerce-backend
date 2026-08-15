@@ -34,19 +34,27 @@ app.use(
   }),
 );
 
-// 🛡️ Security Middlewares
+const allowedOrigins =
+  env.NODE_ENV === 'production'
+    ? ['https://yourdomain.com', 'https://app.yourdomain.com']
+    : ['http://localhost:5173']; // add other dev ports if needed, e.g. Electron app origin
+
 app.use(helmet());
 app.use(
   cors({
-    origin:
-      env.NODE_ENV === 'production'
-        ? ['https://yourdomain.com', 'https://app.yourdomain.com']
-        : '*',
+    origin: (origin, callback) => {
+      // allow non-browser tools / same-origin requests with no origin header
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS blocked for origin: ${origin}`));
+      }
+    },
     credentials: true,
   }),
 );
-app.use(defaultLimiter);
-
 // 📦 Body Parsing Configurations
 app.use('/api/v1/payments/chapa/webhook', express.raw({ type: '*/*', limit: '10kb' }));
 app.use(express.json({ limit: '10kb' }));
