@@ -208,7 +208,7 @@ export const requestPasswordReset = async (email: string): Promise<void> => {
     await prisma.passwordResetToken.create({
       data: {
         userId: user.id,
-        token,
+        token: hashToken(token),
         expiresAt,
       },
     });
@@ -220,8 +220,9 @@ export const requestPasswordReset = async (email: string): Promise<void> => {
 };
 
 export const resetPassword = async (token: string, newPassword: string): Promise<void> => {
-  const resetToken = await prisma.passwordResetToken.findUnique({ where: { token } });
-
+  const resetToken = await prisma.passwordResetToken.findUnique({
+    where: { token: hashToken(token) },
+  });
   // Order matters: existence -> expiry -> already-used, in that exact sequence.
   if (!resetToken) {
     throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'Invalid reset link');

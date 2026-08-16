@@ -21,6 +21,7 @@ type ProductSummary = {
 
 type ProductDetail = ProductSummary & {
   photos: string[];
+  description: string;
 };
 
 export async function getPublishedProducts(filters: {
@@ -93,5 +94,6 @@ export async function getPublishedProductById(id: string): Promise<ProductDetail
       stock: variant.stock,
     })),
     photos: [...product.photos].sort((a, b) => a.sortOrder - b.sortOrder).map((photo) => photo.url),
+    description: product.description,
   };
 }

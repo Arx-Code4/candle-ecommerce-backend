@@ -168,6 +168,7 @@ describe('getPublishedProductById', () => {
       primaryPhotoUrl: 'a.jpg',
       variants: [{ id: 'v1', scent: 'vanilla', size: 'large', stock: 5 }],
       photos: ['a.jpg'],
+      description: 'A test candle',
     });
   });
 

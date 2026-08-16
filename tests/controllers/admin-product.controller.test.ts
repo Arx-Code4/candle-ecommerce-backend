@@ -34,7 +34,7 @@ function buildProductResult(overrides: Partial<any> = {}) {
     id: 'product-1',
     name: 'Vanilla Bliss',
     description: 'A warm vanilla candle',
-    price: 19.99,
+    price: '19.99',
     isPublished: false,
     photos: [{ id: 'photo-1', url: 'https://example.com/photo.jpg', sortOrder: 0 }],
     variants: [{ id: 'variant-1', scent: 'Vanilla', size: 'Large', stock: 10 }],
