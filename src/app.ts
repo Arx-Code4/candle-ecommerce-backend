@@ -9,7 +9,7 @@ import type { IncomingMessage } from 'http';
 import { env } from './config/env.js';
 import logger from './utils/logger.js';
 import ApiError from './utils/ApiError.js';
-import { SuccessResponse } from './utils/ApiResponse.js'; // 🟢 For health check alignment
+import { SuccessResponse } from './utils/ApiResponse.js'; //  For health check alignment
 import { HTTP_STATUS } from './constants/index.js';
 
 // Middlewares & Routes
@@ -19,14 +19,14 @@ import router from './routes/index.js';
 
 const app = express();
 
-// 🟢 2. Generate and bind Correlation Request IDs
+//  2. Generate and bind Correlation Request IDs
 app.use((req, res, next) => {
   req.id = randomUUID();
   res.setHeader('X-Request-Id', req.id);
   next();
 });
 
-// 🟢 3. Link Express Request IDs directly to Pino logs
+//  3. Link Express Request IDs directly to Pino logs
 app.use(
   (pinoHttp as any)({
     logger,
@@ -55,27 +55,27 @@ app.use(
     credentials: true,
   }),
 );
-// 📦 Body Parsing Configurations
+//  Body Parsing Configurations
 app.use('/api/v1/payments/chapa/webhook', express.raw({ type: '*/*', limit: '10kb' }));
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
-// 🚀 Core Application Routing Paths
+//  Core Application Routing Paths
 app.use('/api/v1', router);
 
-// 🟢 4. Realignment of Health Check Endpoint to your Design System Shell
+//  4. Realignment of Health Check Endpoint to your Design System Shell
 app.get('/health', (req, res) => {
   return res
     .status(HTTP_STATUS.OK)
     .json(new SuccessResponse(HTTP_STATUS.OK, 'Server is running healthily', { status: 'ok' }));
 });
 
-// 🔍 404 Route Catch-All Handling
+//  404 Route Catch-All Handling
 app.use((req, res, next) => {
   next(new ApiError(HTTP_STATUS.NOT_FOUND, `Route ${req.method} ${req.path} not found`));
 });
 
-// 🛡️ Global Unified Error Interceptor Pipeline
+//  Global Unified Error Interceptor Pipeline
 app.use(errorMiddleware);
 
 export default app;
