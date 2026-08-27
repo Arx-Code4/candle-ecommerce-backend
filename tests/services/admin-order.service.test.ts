@@ -54,18 +54,6 @@ function buildPrismaOrder(overrides: Partial<Order> = {}): Order {
   };
 }
 
-// Build OrderSummary (for service return values)
-function buildOrderSummary(overrides: Partial<OrderSummary> = {}): OrderSummary {
-  return {
-    id: 'order-1',
-    status: 'PROCESSING',
-    customerName: 'Jane Doe',
-    customerEmail: 'jane@example.com',
-    items: [{ id: 'item-1', variantId: 'variant-1', quantity: 2 }],
-    ...overrides,
-  };
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
 });

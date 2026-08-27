@@ -3,6 +3,7 @@ import { prisma } from '../config/db.js';
 import ApiError from '../utils/ApiError.js';
 import { HTTP_STATUS } from '../constants/index.js';
 import { sendShippingNotificationEmail } from './notification.service.js';
+import { toPriceString } from '../utils/price.js';
 
 export interface OrderItemDetail {
   id: string;
@@ -16,6 +17,7 @@ export interface OrderSummary {
   customerName: string;
   customerEmail: string;
   items: OrderItemDetail[];
+  totalAmount: string;
 }
 
 export interface PaginatedResult<T> {
@@ -41,6 +43,7 @@ interface RawOrderItemLike {
 interface RawOrderRow {
   id: string;
   status: string;
+  totalAmount: Prisma.Decimal;
   user?: { name: string; email: string } | null;
   customerName?: string;
   customerEmail?: string;
@@ -59,6 +62,7 @@ const toOrderSummary = (row: RawOrderRow): OrderSummary => ({
   customerName: row.user ? row.user.name : (row.customerName ?? ''),
   customerEmail: row.user ? row.user.email : (row.customerEmail ?? ''),
   items: (row.items ?? []).map(toOrderItemDetail),
+  totalAmount: toPriceString(row.totalAmount),
 });
 
 export const getAllOrders = async (

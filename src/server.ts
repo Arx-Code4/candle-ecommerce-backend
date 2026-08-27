@@ -1,7 +1,7 @@
 import { Server } from 'http';
 import app from './app.js';
 import { env } from './config/env.js';
-import { prisma } from './config/db.js';
+import { pool, prisma } from './config/db.js';
 import logger from './utils/logger.js';
 
 let server: Server;
@@ -25,6 +25,7 @@ const handleShutdown = async (signal: string) => {
     logger.fatal('Graceful shutdown exceeded 10s. Forcing emergency cleanup...');
     try {
       await prisma.$disconnect();
+      await pool.end();
       logger.info('Database disconnected (emergency path)');
     } catch (err) {
       logger.error(err, 'Emergency disconnect failed');
@@ -38,6 +39,7 @@ const handleShutdown = async (signal: string) => {
     clearTimeout(forceExitTimer);
     try {
       await prisma.$disconnect();
+      await pool.end();
       logger.info('Database disconnected successfully');
     } catch (err) {
       logger.error(err, 'Database disconnect failed');
@@ -66,7 +68,7 @@ const handleShutdown = async (signal: string) => {
 process.on('SIGTERM', () => handleShutdown('SIGTERM'));
 process.on('SIGINT', () => handleShutdown('SIGINT'));
 /**
- * 🚀 Boosts the Application runtime
+ *  Boosts the Application runtime
  */
 const startServer = async () => {
   try {

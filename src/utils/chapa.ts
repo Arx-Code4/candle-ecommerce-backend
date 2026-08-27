@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { env } from '../config/env.js';
 import ApiError from './ApiError.js';
 import logger from './logger.js';
+import { HTTP_STATUS } from '../constants/index.js';
 
 const CHAPA_BASE_URL = 'https://api.chapa.co/v1';
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -47,7 +48,10 @@ export const initializeTransaction = async (
     logger.error(error, 'Chapa initializeTransaction failed');
     // NOTE: HTTP_STATUS has no BAD_GATEWAY entry today — using the literal
     // per the spec. Consider adding BAD_GATEWAY: 502 to constants/index.ts.
-    throw new ApiError(502, 'Unable to reach payment provider, please try again');
+    throw new ApiError(
+      HTTP_STATUS.BAD_GATEWAY,
+      'Unable to reach payment provider, please try again',
+    );
   }
 };
 
@@ -69,7 +73,7 @@ export const verifyTransaction = async (txRef: string): Promise<VerifyTransactio
     return { status, amount: String(data?.amount ?? '') };
   } catch (error) {
     logger.error(error, 'Chapa verifyTransaction failed');
-    throw new ApiError(502, 'Unable to verify payment with provider');
+    throw new ApiError(HTTP_STATUS.BAD_GATEWAY, 'Unable to verify payment with provider');
   }
 };
 
