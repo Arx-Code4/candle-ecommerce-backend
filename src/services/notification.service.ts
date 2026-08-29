@@ -7,6 +7,12 @@ import type { Order, OrderItem } from '@prisma/client';
 import { sendMail } from '../utils/mailer.js';
 import logger from '../utils/logger.js';
 import { env } from '../config/env.js';
+import {
+  getOrderConfirmationTemplate,
+  getShippingNotificationTemplate,
+  getPasswordResetTemplate,
+  getPaymentFailedTemplate,
+} from '../templates/email.templates.js';
 
 export type OrderWithItems = Order & { items: OrderItem[] };
 
@@ -26,11 +32,13 @@ export const sendOrderConfirmationEmail = async (
           `<li>${item.productNameSnapshot} (${item.scentSnapshot}, ${item.sizeSnapshot}) x${item.quantity}</li>`,
       )
       .join('');
+    const html = getOrderConfirmationTemplate(order);
 
     await sendMail({
       to: customerEmail,
       subject: `Order Confirmed — #${order.id}`,
       html: `<p>Thank you for your order!</p><ul>${itemsHtml}</ul><p>Total: ${order.totalAmount.toFixed(2)} ETB</p>`,
+      html,
     });
   } catch (error) {
     logger.error(error, `Failed to send order confirmation email for order ${order.id}`);
@@ -47,10 +55,13 @@ export const sendShippingNotificationEmail = async (
   }
 
   try {
+    const html = getShippingNotificationTemplate(order);
+
     await sendMail({
       to: customerEmail,
       subject: `Your order #${order.id} has shipped`,
       html: `<p>Good news — your order has shipped!</p>`,
+      html,
     });
   } catch (error) {
     logger.error(error, `Failed to send shipping notification email for order ${order.id}`);
@@ -69,14 +80,18 @@ export const sendPasswordResetEmail = async (
   const resetUrl = `${env.FRONTEND_PASSWORD_RESET_URL}?token=${resetToken}`;
 
   try {
+    const html = getPasswordResetTemplate(resetUrl);
+
     await sendMail({
       to: customerEmail,
       subject: 'Reset Your Password',
       html: `<p>We received a request to reset your password.</p><p><a href="${resetUrl}">Click here to reset your password</a></p><p>If you didn't request this, you can safely ignore this email.</p>`,
+      html,
     });
   } catch (error) {
     logger.error(error, 'Failed to send password reset email');
     throw error; // propagate — unlike the other notifications, the caller needs to know this failed
+    throw error;
   }
 };
 
@@ -95,6 +110,7 @@ export const sendPaymentFailedEmail = async (
       reason === 'cancelled'
         ? 'Your payment was cancelled before it completed.'
         : 'Your payment could not be processed.';
+    const html = getPaymentFailedTemplate(txRef, reason);
 
     await sendMail({
       to: customerEmail,
@@ -103,6 +119,7 @@ export const sendPaymentFailedEmail = async (
           ? 'Payment Cancelled — Order Not Placed'
           : 'Payment Failed — Order Not Placed',
       html: `<p>${message}</p><p>Reference: ${txRef}</p><p>No order was placed and you have not been charged. You can return to checkout to try again.</p>`,
+      html,
     });
   } catch (error) {
     logger.error(error, `Failed to send payment ${reason} email for tx ${txRef}`);

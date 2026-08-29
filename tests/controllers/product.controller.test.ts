@@ -34,6 +34,15 @@ describe('product.controller', () => {
 
   it('getProductById delegates to getPublishedProductById and responds 200 with SuccessResponse', async () => {
     const product = { id: 'p1', name: 'Candle', photos: ['a.jpg'], variants: [] };
+    const product = {
+      id: 'p1',
+      name: 'Candle',
+      price: '100',
+      description: '',
+      primaryPhotoUrl: 'a.jpg',
+      photos: ['a.jpg'],
+      variants: [],
+    };
     vi.mocked(productService.getPublishedProductById).mockResolvedValue(product);
     const req: any = { params: { id: 'p1' } };
     const res = mockRes();
