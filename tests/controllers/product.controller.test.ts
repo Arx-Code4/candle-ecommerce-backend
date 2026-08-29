@@ -33,7 +33,6 @@ describe('product.controller', () => {
   });
 
   it('getProductById delegates to getPublishedProductById and responds 200 with SuccessResponse', async () => {
-    const product = { id: 'p1', name: 'Candle', photos: ['a.jpg'], variants: [] };
     const product = {
       id: 'p1',
       name: 'Candle',
